@@ -26,9 +26,10 @@ terminal_configurations old_config ;
 
 
 void draw_tildes(int ws_row) {   
-    for (__uint8_t i = 0; i < ws_row ; i++) {
+    for (__uint8_t i = 0; i < ws_row - 1 ; i++) {
         write(STDOUT_FILENO, "~\r\n", 3) ;
     }
+    write(STDOUT_FILENO, "~", 3) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ;
 }
 
@@ -46,14 +47,14 @@ void clear_screen(int ws_row){
 
 void kill(char* error_message){
     clear_screen( old_config.window_size.ws_col );
-    fprintf(stderr, error_message, errno );
+    fprintf(stderr, "%s: %s\n" ,error_message, strerror(errno) );
     exit(EXIT_FAILURE);
 }
 
 ////////////////////////////////////////////////////////////////
 
 void disable_raw_mode(){
-    if(tcsetattr(STDERR_FILENO, TCSAFLUSH, &old_config.old_settings) == -1){kill("User's attribustions caused an error");} 
+    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_config.old_settings) == -1){kill("Failed to restore old settings");} 
 }
 
 ///////////////////////////////////////////////////////////////
@@ -74,7 +75,9 @@ void enable_raw_mode(struct termios *settings) {
     settings->c_oflag &= ~(OPOST);// /r/n -> /n
     settings->c_cc[VMIN] = 0;
     settings->c_cc[VTIME] = 100;
-    tcsetattr(STDERR_FILENO, TCSAFLUSH, settings) ; 
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, settings) == -1) {
+        kill("Failed to enable raw mode");
+    }
 }
 
 ///////////////////////////////////////////////////////
@@ -82,10 +85,12 @@ void enable_raw_mode(struct termios *settings) {
 char read_one_key() {
     char c ;
     ssize_t nbr_bytes ; 
-    read(STDIN_FILENO, &c, 1);
+    
     // Reading some additional bytes before triggering an error to verify 
     // if the screen is being cleared after an error is detected
-    /* read(STDIN_FILENO, &c, 1);
+    /*
+    read(STDIN_FILENO, &c, 1);
+    read(STDIN_FILENO, &c, 1);
     read(STDIN_FILENO, &c, 1);
     close(STDIN_FILENO); */
     while ((nbr_bytes = read(STDIN_FILENO, &c, 1)) != 1 ) {
@@ -125,7 +130,8 @@ int main() {
 
 /*     close(STDIN_FILENO); // error trigger */
     while (1){
+        clear_screen(old_config.window_size.ws_row);
         key_process();}
-        clear_screen(old_config.window_size.ws_row) ;
+        
     return EXIT_SUCCESS ;
 }
