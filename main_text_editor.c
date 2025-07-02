@@ -89,17 +89,25 @@ struct winsize cursor_position(){
     int columns;
     struct winsize window_size;
 
-    char buf[32];
-    unsigned int i = 0;
-    if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) kill("couldn't write down position");
-    while (i < sizeof(buf) - 1) {
-        if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
-        if (buf[i] == 'R') break;
+    char position[32]; // even though the response isn't that big ( ^[[number1,number2R ) we'll allocate 32 bytes just to be safe
+    __uint8_t i = 0;
+    ssize_t written = write(STDOUT_FILENO, "\x1b[6n", 4);
+    if (written == -1) {
+        kill("An error occured, couldn't get the cursor's position");}
+
+    else if(written < 4){kill("Partial write, writing process was interrupted (check close)");}
+
+    while (i < sizeof(position) - 1) {
+        if (read(STDIN_FILENO, &position[i], 1) != 1) {kill("reading problem in cursor_position");}
+        if (position[i] == 'R') {break;} // R marks the end of this response
         i++;
     }
-    buf[i] = '\0';
-    if (buf[0] != '\x1b' || buf[1] != '[') kill("False format for position");
-    if (sscanf(&buf[2], "%d;%d", &rows, &columns) != 2) kill ("couldn't get rows and columns");
+    position[i] = '\0'; // as any string position should be ended with a '\0'
+    if (position[0] != '\x1b' || position[1] != '['){
+         kill("False format for position");}
+    // Now we'll parse position to get the coordinates of the cursor
+    if (sscanf(&position[2], "%d;%d", &rows, &columns) != 2) {
+        kill ("couldn't get rows and columns");}
     window_size.ws_col = columns;
     window_size.ws_row = rows;
     return window_size;
@@ -107,19 +115,20 @@ struct winsize cursor_position(){
 
 
 struct winsize get_window_size() {
-    struct winsize window_size;/* 
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &window_size) == -1 || window_size.ws_col == 0){ */
+    struct winsize window_size;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &window_size) == -1 || window_size.ws_col == 0){ 
+        // if ioctl won't work on this system we'll request the window size manually
         ssize_t written = write(STDOUT_FILENO, "\x1b[1234C\x1b[1234B", 14);
         if (written == -1) { 
             kill("An error occured, couldn't get the size of the window");}
         else if (written < 14 ){
             kill("Partial write, writing process was interrupted (check close)");}
         else {
-            return cursor_position();
+            window_size = cursor_position();
             /* read_one_key();
-            kill("testing for now"); *///}
-        }
-}
+            kill("testing for now"); */
+         return window_size;}
+        }}
 
 
 ////////////////////////////////////////////////////////////////
