@@ -15,8 +15,11 @@ because the switch case statement (in key_process function)
 does not support a variable returned from another function */
 #define CTRL_KEY(k) (k & 0x1f)
 
+#define BEE_version "1.0"
 
 typedef struct {
+    int cursor_x;
+    int cursor_y;
     struct termios old_settings ;
     struct winsize window_size; 
 } terminal_configurations ;
@@ -34,8 +37,7 @@ void clear_screen(int ws_row, int col);
 
 void kill(char* error_message);
 
-
-char read_one_key();
+int read_one_key();
 
 void key_process();
 
@@ -50,3 +52,5 @@ void enable_raw_mode(struct termios *settings);
 void append_buffer(text_buffer* current_text_buff, char* c, int length_c);
 
 void free_text_buffer(text_buffer* current_text_buffer);
+
+void move_cursor(int direction);

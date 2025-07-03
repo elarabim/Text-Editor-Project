@@ -1,10 +1,36 @@
 #include "main_text_editor.h"
 
 terminal_configurations old_config ;
-char* BEE_version = "1.0";
 
 
+
+enum editorKey {
+  ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
+                    // which will help us to differentiate from regular chars (previously 'w')
+                    // However since windows uses the MSVC compiler that considers chars unsigned we chose 256 just to be safe (1 unsigned byte -> 255)
+  ARROW_RIGHT,
+  ARROW_UP,
+  ARROW_DOWN
+};
 ////////////////////////////////////////////////////////////////
+void move_cursor(int direction){
+
+    if (direction == ARROW_UP) {
+        if (old_config.cursor_y > 0)
+            old_config.cursor_y--;}
+
+    else if (direction == ARROW_DOWN) {
+    if (old_config.cursor_y < old_config.window_size.ws_row - 1)
+        old_config.cursor_y++;}
+
+    else if (direction == ARROW_RIGHT) {
+        if (old_config.cursor_x < old_config.window_size.ws_col - 1)
+            old_config.cursor_x++;}
+
+    else if (direction == ARROW_LEFT) {
+        if (old_config.cursor_x > 0) 
+            old_config.cursor_x--;}
+}
 
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
@@ -12,7 +38,8 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
         append_buffer(tildes_buff, "~", 1);
         if (i == ws_row/2){
          /* write(STDOUT_FILENO, "~\r\n", 3) ; */
-        int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff), "BEE text editor -- Version %ss", BEE_version);
+        /// Welcome message ///
+        int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff), "BEE text editor -- Version %s", BEE_version);
     
         if (big_welcome > ws_col){ 
             append_buffer(tildes_buff, welcome_buff, ws_col);}
@@ -28,13 +55,9 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
         append_buffer(tildes_buff,"\x1b[K", 3); // K command : erease line; 1: left of the cursor (so we don't delete ~)
         append_buffer(tildes_buff,"\r\n", 2);}
     append_buffer(tildes_buff, "~", 1);
-    append_buffer(tildes_buff, "\x1b[1;1H", 6);
-    //once we're done drawing the tildes we recover the cursor;
-    append_buffer(tildes_buff,"\x1b[?25h", 6);
-    write(STDOUT_FILENO, tildes_buff->text, tildes_buff->length);
-    /// Welcome message ///
 
     
+
    /*  write(STDOUT_FILENO, "~", 1) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; */
 }
@@ -43,7 +66,7 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
 void clear_screen(int ws_row, int ws_col){
     text_buffer initializing_screen = {NULL,0};
     // we'll hide the cursor before drawing the tildes
-    append_buffer(&initializing_screen,"\x1b[?25l", 6);//?25: hide cursor; l: lowercase "L" -> disable
+    append_buffer(&initializing_screen,"\x1b[?25l", 6);//?25: hide cursor; l: lowercase "L" -> disable (cursor)
 
     //we'll replace this clearing command with a line by line one in draw_tildes
     /* append_buffer(&initializing_screen,"\x1b[2J", 4); */// J command: clear the screen ; 2: all of the screen
@@ -53,8 +76,18 @@ void clear_screen(int ws_row, int ws_col){
                                            // would only take 3 bytes */
     draw_tildes(ws_row, ws_col, &initializing_screen);
 
-    
+    // here we'll be positioning the cursor as indicated by the coordinates
+    char cursor_at_will[32];
+    snprintf(cursor_at_will, sizeof(cursor_at_will), "\x1b[%d;%dH", old_config.cursor_y + 1, old_config.cursor_x + 1);
 
+    //once we're done drawing the tildes we recover the cursor;
+    append_buffer(&initializing_screen,"\x1b[?25h", 6);
+    append_buffer(&initializing_screen, cursor_at_will, strlen(cursor_at_will));
+
+    write(STDOUT_FILENO, (&initializing_screen)->text, (&initializing_screen)->length); //We could've simply written 
+                                                                                        //write(STDOUT_FILENO, initializing_screen.text, initializing_screen.length)
+                                                                                        //but we wanted to keep a similar structure with draw as this part was previously
+                                                                                        //in draw_tildes
     free_text_buffer(&initializing_screen);
 
 }
@@ -69,8 +102,8 @@ void kill(char* error_message){
 ////////////////////////////////////////////////////////////////
 
 
-char read_one_key() {
-    char c ;
+int read_one_key() {
+    char key ;
     ssize_t nbr_bytes ; 
     
     // Reading some additional bytes before triggering an error to verify 
@@ -80,23 +113,38 @@ char read_one_key() {
     read(STDIN_FILENO, &c, 1);
     read(STDIN_FILENO, &c, 1);
     close(STDIN_FILENO); */
-    while ((nbr_bytes = read(STDIN_FILENO, &c, 1)) != 1 ) {
+    while ((nbr_bytes = read(STDIN_FILENO, &key, 1)) != 1 ) {
         if (nbr_bytes != 1 && errno != EAGAIN) {kill("reading error in read_one_key\r\n");}
     }
-    return c ; 
+    if (key == '\x1b'){
+        char direction[3]; // 3 bytes because we may handle more escapes afterwards
+        if (read(STDIN_FILENO, &direction[0], 1) != 1){ return '\x1b';} // there is no second byte just a space
+        if (read(STDIN_FILENO, &direction[1], 1) != 1){ return '\x1b';} // first byte may exist but doesn't mean 
+                                                                        // anything without the second one
+        if (direction[0] == '['){
+            if (direction[1] == 'A'){ return ARROW_UP;} // up
+            else if (direction[1] == 'B'){ return ARROW_DOWN;} // down
+            else if (direction[1] == 'C'){ return ARROW_RIGHT;} // right
+            else if (direction[1] == 'D'){ return ARROW_LEFT;} // left
+        }
+
+        return '\x1b'; // the sequence starts with a space but the rest isn't recognized
+    }
+    return key ; 
 }
 
 /////////////////////////////////////////////////////////////////////
 
 void key_process() {
-    char c = read_one_key() ;
-    switch (c) {
-        case CTRL_KEY('q') :
-            // clear_screen( old_config.window_size.ws_col) ;
-            write(STDOUT_FILENO, "\x1b[2J", 4);
-            write(STDOUT_FILENO, "\x1b[1;1H", 6);      
-            exit(EXIT_SUCCESS) ;
-            break ;
+    int key = read_one_key();
+
+    if (key == CTRL_KEY('q')) {
+        write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[1;1H", 6);
+        exit(EXIT_SUCCESS);  // Exit the program
+    } 
+    else if (key == ARROW_UP || key == ARROW_DOWN || key == ARROW_LEFT || key == ARROW_RIGHT) {
+       move_cursor(key);
     }
 }
 
@@ -208,6 +256,9 @@ void free_text_buffer(text_buffer* current_text_buffer){
 
 int main() {
     struct termios new_settings; 
+    // initializing cursor position
+    old_config.cursor_x = 0;
+    old_config.cursor_y = 0;
 
     // Récupérer les anciens réglages avant toute modification
     if (tcgetattr(STDIN_FILENO, &old_config.old_settings) == -1) {
@@ -224,6 +275,5 @@ int main() {
     }
 
     return EXIT_SUCCESS;
-
 
 }
