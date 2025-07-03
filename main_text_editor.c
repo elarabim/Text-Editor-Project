@@ -1,12 +1,30 @@
 #include "main_text_editor.h"
+
 terminal_configurations old_config ;
+char* BEE_version = "1.0";
+
 
 ////////////////////////////////////////////////////////////////
 
-void draw_tildes(int ws_row,text_buffer* tildes_buff) { 
+void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
+    char welcome_buff[64];
     for (int i = 0; i < ws_row - 1; i++) {
-         /* write(STDOUT_FILENO, "~\r\n", 3) ; */
         append_buffer(tildes_buff, "~", 1);
+        if (i == ws_row/2){
+         /* write(STDOUT_FILENO, "~\r\n", 3) ; */
+        int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff), "BEE text editor -- Version %ss", BEE_version);
+    
+        if (big_welcome > ws_col){ 
+            append_buffer(tildes_buff, welcome_buff, ws_col);}
+        else{
+            int center = (ws_col - big_welcome)/2 - 1; // The - 1 is to take account for ~
+            while (center != 0){
+                append_buffer(tildes_buff, " ", 1);
+                center--;
+            }
+            append_buffer(tildes_buff, welcome_buff, big_welcome);}
+        }
+
         append_buffer(tildes_buff,"\x1b[K", 3); // K command : erease line; 1: left of the cursor (so we don't delete ~)
         append_buffer(tildes_buff,"\r\n", 2);}
     append_buffer(tildes_buff, "~", 1);
@@ -14,14 +32,15 @@ void draw_tildes(int ws_row,text_buffer* tildes_buff) {
     //once we're done drawing the tildes we recover the cursor;
     append_buffer(tildes_buff,"\x1b[?25h", 6);
     write(STDOUT_FILENO, tildes_buff->text, tildes_buff->length);
-       
+    /// Welcome message ///
+
     
    /*  write(STDOUT_FILENO, "~", 1) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; */
 }
 
 
-void clear_screen(int ws_row){
+void clear_screen(int ws_row, int ws_col){
     text_buffer initializing_screen = {NULL,0};
     // we'll hide the cursor before drawing the tildes
     append_buffer(&initializing_screen,"\x1b[?25l", 6);//?25: hide cursor; l: lowercase "L" -> disable
@@ -32,7 +51,7 @@ void clear_screen(int ws_row){
     /* write(STDOUT_FILENO, "\x1b[2J", 4) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; // The values by default are 1;1 so we could've simply written \x1b[ whic
                                            // would only take 3 bytes */
-    draw_tildes(ws_row, &initializing_screen);
+    draw_tildes(ws_row, ws_col, &initializing_screen);
 
     
 
@@ -42,7 +61,7 @@ void clear_screen(int ws_row){
 
 
 void kill(char* error_message){
-    clear_screen( old_config.window_size.ws_col );
+    clear_screen( old_config.window_size.ws_row ,old_config.window_size.ws_col);
     fprintf(stderr, "%s: %s\n" ,error_message, strerror(errno) );
     exit(EXIT_FAILURE);
 }
@@ -125,8 +144,9 @@ struct winsize get_window_size() {
             window_size = cursor_position();
             /* read_one_key();
             kill("testing for now"); */
-         return window_size;}
-        }}
+         }
+        }
+    return window_size;}
 
 
 ////////////////////////////////////////////////////////////////
@@ -199,7 +219,7 @@ int main() {
     old_config.window_size = get_window_size();  
 
     while (1) {
-        clear_screen(old_config.window_size.ws_row);
+        clear_screen(old_config.window_size.ws_row, old_config.window_size.ws_col);
         key_process();
     }
 

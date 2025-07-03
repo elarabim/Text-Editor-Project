@@ -6,11 +6,15 @@
 #include <sys/ioctl.h>
 #include <ctype.h>
 #include <string.h>  // for strerror
+#ifndef MAIN_TEXT_EDITOR_H
+#define MAIN_TEXT_EDITOR_H
+#endif
 
 /* We'll use it as a macro and not as function 
 because the switch case statement (in key_process function) 
 does not support a variable returned from another function */
 #define CTRL_KEY(k) (k & 0x1f)
+
 
 typedef struct {
     struct termios old_settings ;
@@ -24,13 +28,12 @@ typedef struct {
 
 
 
-void draw_tildes(int ws_row, text_buffer* tildes_buff);
+void draw_tildes(int ws_row, int col, text_buffer* tildes_buff);
 
-void clear_screen(int ws_row);
-
-void kill(char* error_message);
+void clear_screen(int ws_row, int col);
 
 void kill(char* error_message);
+
 
 char read_one_key();
 
