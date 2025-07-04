@@ -10,7 +10,12 @@ enum editorKey {
                     // However since windows uses the MSVC compiler that considers chars unsigned we chose 256 just to be safe (1 unsigned byte -> 255)
   ARROW_RIGHT,
   ARROW_UP,
-  ARROW_DOWN
+  ARROW_DOWN,
+  PAGE_UP,
+  PAGE_DOWN,
+  HOME_KEY,
+  END_KEY,
+  DELETE_KEY
 };
 ////////////////////////////////////////////////////////////////
 void move_cursor(int direction){
@@ -29,32 +34,66 @@ void move_cursor(int direction){
 
     else if (direction == ARROW_LEFT) {
         if (old_config.cursor_x > 0) 
-            old_config.cursor_x--;}
+            old_config.cursor_x--;
+        }
+
+    else if (direction == PAGE_UP){
+        
+        while (old_config.cursor_y > 0){
+            old_config.cursor_y--;
+        }
+        
+    }
+    else if (direction == PAGE_DOWN){
+       
+        while (old_config.cursor_y <get_window_size().ws_row -1){
+            old_config.cursor_y++;
+        }
+        
+    }
+    else if  (direction == END_KEY){//move to the edge right
+         while (old_config.cursor_x <get_window_size().ws_col -1){
+            old_config.cursor_x++;
+        }
+    }
+    else if (direction == HOME_KEY){//move to the far left
+        while (old_config.cursor_x >0){
+            old_config.cursor_x--;
+        }
+    }
 }
 
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
     for (int i = 0; i < ws_row - 1; i++) {
-        append_buffer(tildes_buff, "~", 1);
-        if (i == ws_row/2){
-         /* write(STDOUT_FILENO, "~\r\n", 3) ; */
-        /// Welcome message ///
-        int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff), "BEE text editor -- Version %s", BEE_version);
-    
-        if (big_welcome > ws_col){ 
-            append_buffer(tildes_buff, welcome_buff, ws_col);}
-        else{
-            int center = (ws_col - big_welcome)/2 - 1; // The - 1 is to take account for ~
-            while (center != 0){
-                append_buffer(tildes_buff, " ", 1);
-                center--;
+            if (old_config.nrows <= i){
+            append_buffer(tildes_buff, "~", 1);
+            if (i == ws_row/2 && old_config.nrows ==0){
+            /* write(STDOUT_FILENO, "~\r\n", 3) ; */
+            /// Welcome message ///
+                int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff), "BEE text editor -- Version %s", BEE_version);
+            
+                if (big_welcome > ws_col){ 
+                    append_buffer(tildes_buff, welcome_buff, ws_col);}
+                else{
+                    int center = (ws_col - big_welcome)/2 - 1; // The - 1 is to take account for ~
+                    while (center != 0){
+                        append_buffer(tildes_buff, " ", 1);
+                        center--;
+                    }
+                    append_buffer(tildes_buff, welcome_buff, big_welcome);}
+                }
+            else{
+                int len = old_config.nrows;
+                if (len >old_config.window_size.ws_col){
+                    len = old_config.window_size.ws_col;
+                }
+                append_buffer(tildes_buff, old_config.editor_row.row_data, len);
             }
-            append_buffer(tildes_buff, welcome_buff, big_welcome);}
+            append_buffer(tildes_buff,"\x1b[K", 3); // K command : erease line; 1: left of the cursor (so we don't delete ~)
+            append_buffer(tildes_buff,"\r\n", 2);}
+            append_buffer(tildes_buff, "~", 1);
         }
-
-        append_buffer(tildes_buff,"\x1b[K", 3); // K command : erease line; 1: left of the cursor (so we don't delete ~)
-        append_buffer(tildes_buff,"\r\n", 2);}
-    append_buffer(tildes_buff, "~", 1);
 
     
 
@@ -126,6 +165,32 @@ int read_one_key() {
             else if (direction[1] == 'B'){ return ARROW_DOWN;} // down
             else if (direction[1] == 'C'){ return ARROW_RIGHT;} // right
             else if (direction[1] == 'D'){ return ARROW_LEFT;} // left
+            else if (direction[1] == 'H'){ return HOME_KEY;}
+            else if (direction[1] == 'F'){ return END_KEY;}
+            else{
+                //empty for the moment..cases wih only 2
+                if (direction[1] == 'O'){
+                     if (read(STDIN_FILENO, &direction[2], 1) != 1){ return '\x1b';} //there must be 
+                                                                                    //something after O
+                    if(direction[2] == 'H'){
+                        return HOME_KEY;
+                    }
+                    if (direction[2] == 'F'){
+                        return END_KEY;
+                    }
+                }
+                if (read(STDIN_FILENO, &direction[2], 1) != 1){return '\x1b';}//third byte 
+                                                                            //doesn't exist
+                if (direction[2] == '~'){
+                    if (direction[1] == '5'){return PAGE_UP;};
+                    if (direction[1] == '6'){return PAGE_DOWN;};
+                    if (direction[1] == '1'){return HOME_KEY;};
+                    if (direction[1] == '7'){return HOME_KEY;};
+                    if (direction[1] == '4'){return END_KEY;};
+                    if (direction[1] == '8'){return END_KEY;};
+                    if (direction[1] == '3'){return DELETE_KEY;};
+                }
+            }
         }
 
         return '\x1b'; // the sequence starts with a space but the rest isn't recognized
@@ -143,7 +208,8 @@ void key_process() {
         write(STDOUT_FILENO, "\x1b[1;1H", 6);
         exit(EXIT_SUCCESS);  // Exit the program
     } 
-    else if (key == ARROW_UP || key == ARROW_DOWN || key == ARROW_LEFT || key == ARROW_RIGHT) {
+    else if (key == ARROW_UP || ARROW_DOWN ||ARROW_LEFT ||  ARROW_RIGHT 
+        ||PAGE_DOWN||PAGE_DOWN ||HOME_KEY||END_KEY ||DELETE_KEY) {
        move_cursor(key);
     }
 }
@@ -253,13 +319,34 @@ void free_text_buffer(text_buffer* current_text_buffer){
     free(current_text_buffer->text); // length is just an int, only text has to be freed
 }
 /////////////////////////////////////////////////////////////////////
+void OpenEditor(char *filename){
+    FILE *fptr = fopen(filename,"r");
+    if(fptr ==NULL){kill("fopen doesn'r work");};
 
-int main() {
+    char *opening_line = NULL; 
+    size_t cap = 0;
+    ssize_t len; 
+    len = getline(&opening_line,&cap,fptr);
+    if(len != -1){//assert exit succes
+        while(len >0 && opening_line[len -1] != '\r' && opening_line[len -1] !='\n' ){
+            len--;
+        }
+        old_config.editor_row.row_size = len;
+        old_config.editor_row.row_data  = malloc(len + 1);
+        memcpy(old_config.editor_row.row_data,opening_line,len);
+        old_config.editor_row.row_data[len] = '\0';
+        old_config.nrows = 1;
+    }
+    free(opening_line);
+    free(fptr);
+}
+int main(int argc,char *argv) {
     struct termios new_settings; 
     // initializing cursor position
     old_config.cursor_x = 0;
     old_config.cursor_y = 0;
-
+    old_config.nrows = 0;
+    
     // Récupérer les anciens réglages avant toute modification
     if (tcgetattr(STDIN_FILENO, &old_config.old_settings) == -1) {
         kill("Could not get terminal attributes");
@@ -267,13 +354,14 @@ int main() {
 
     new_settings = old_config.old_settings;
     enable_raw_mode(&new_settings);  
-    old_config.window_size = get_window_size();  
-
+    old_config.window_size = get_window_size(); 
+    if (argc >1){
+        OpenEditor(argv[1]);
+    }
     while (1) {
         clear_screen(old_config.window_size.ws_row, old_config.window_size.ws_col);
         key_process();
     }
 
     return EXIT_SUCCESS;
-
 }

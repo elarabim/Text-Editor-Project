@@ -4,6 +4,8 @@
 #include <termios.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+
 #include <ctype.h>
 #include <string.h>  // for strerror
 #ifndef MAIN_TEXT_EDITOR_H
@@ -17,11 +19,17 @@ does not support a variable returned from another function */
 
 #define BEE_version "1.0"
 
+typedef struct{
+    int row_size;
+    char *row_data;
+} plain_row;
 typedef struct {
     int cursor_x;
     int cursor_y;
+    int nrows;
     struct termios old_settings ;
-    struct winsize window_size; 
+    struct winsize window_size;
+    plain_row editor_row; 
 } terminal_configurations ;
 
 typedef struct {
@@ -31,6 +39,7 @@ typedef struct {
 
 
 
+void OpenEditor();
 void draw_tildes(int ws_row, int col, text_buffer* tildes_buff);
 
 void clear_screen(int ws_row, int col);
