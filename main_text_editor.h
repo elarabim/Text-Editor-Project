@@ -49,6 +49,7 @@ typedef struct {
     int nrows;
     struct termios old_settings ;
     struct winsize window_size;
+    int row_offset;
     plain_row* editor_row;
 } terminal_configurations ;
 

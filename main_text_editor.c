@@ -79,9 +79,10 @@ void move_cursor(int direction){
 
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
-    
-    for (int i = 0; i < ws_row ; i++) {
-        if (old_config.nrows <= i) {
+   
+    for (int i = 0; i < ws_row - 1 ; i++) {
+        int file_row = i + old_config.row_offset ;
+        if (old_config.nrows <= file_row) {
             if (old_config.nrows == 0 && i == old_config.window_size.ws_row / 3) {
                 /* write(STDOUT_FILENO, "~\r\n", 3) ; */
                 /// Welcome message ///
@@ -108,14 +109,14 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
             }
         } 
         else {
-            int len = old_config.editor_row[i].row_size;
+            int len = old_config.editor_row[file_row].row_size;
             if (len > old_config.window_size.ws_col) {
                 len = old_config.window_size.ws_col;
             }
-            append_buffer(tildes_buff, old_config.editor_row[i].row_data, len);
+            append_buffer(tildes_buff, old_config.editor_row[file_row].row_data, len);
         }
 
-        append_buffer(tildes_buff, "\x1b[K", 3); // Efface la ligne jusqu'à la fin
+        /* append_buffer(tildes_buff, "\x1b[K", 3); */  // Efface la ligne jusqu'à la fin
         append_buffer(tildes_buff, "\r\n", 2);
     }
 
@@ -135,7 +136,7 @@ void clear_screen(int ws_row, int ws_col){
     append_buffer(&initializing_screen,"\x1b[?25l", 6);//?25: hide cursor; l: lowercase "L" -> disable (cursor)
 
     //we'll replace this clearing command with a line by line one in draw_tildes
-    /* append_buffer(&initializing_screen,"\x1b[2J", 4); */// J command: clear the screen ; 2: all of the screen
+    append_buffer(&initializing_screen,"\x1b[2J", 4); // J command: clear the screen ; 2: all of the screen
     append_buffer(&initializing_screen,"\x1b[1;1H", 6); // H command : cursor position
     /* write(STDOUT_FILENO, "\x1b[2J", 4) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; // The values by default are 1;1 so we could've simply written \x1b[ whic
@@ -179,8 +180,10 @@ int read_one_key() {
     read(STDIN_FILENO, &c, 1);
     read(STDIN_FILENO, &c, 1);
     close(STDIN_FILENO); */
-    while ((nbr_bytes = read(STDIN_FILENO, &key, 1)) != 1 ) {
-        if (nbr_bytes != 1 && errno != EAGAIN) {kill("reading error in read_one_key\r\n");}
+    while ((nbr_bytes = read(STDIN_FILENO, &key, 1)) != 1) {
+        if (nbr_bytes == -1 && errno != EAGAIN) {
+            kill("reading error in read_one_key\r\n");
+            }
     }
     if (key == '\x1b'){
         char direction[3]; // 3 bytes because we may handle more escapes afterwards
@@ -235,10 +238,14 @@ void key_process() {
         write(STDOUT_FILENO, "\x1b[1;1H", 6);
         exit(EXIT_SUCCESS);  // Exit the program
     } 
-    else if (key == ARROW_UP || ARROW_DOWN ||ARROW_LEFT ||  ARROW_RIGHT 
-        ||PAGE_DOWN||PAGE_DOWN ||HOME_KEY||END_KEY ||DELETE_KEY) {
-       move_cursor(key);
+    else if (key == ARROW_UP || key == ARROW_DOWN || 
+            key == ARROW_LEFT || key == ARROW_RIGHT ||
+            key == PAGE_UP   || key == PAGE_DOWN   ||
+            key == HOME_KEY  || key == END_KEY    || 
+            key == DELETE_KEY) {
+        move_cursor(key);
     }
+
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -363,6 +370,7 @@ void OpenEditor(char* filename){
 
 
 int main(int argc, char** argv) {
+
     struct termios new_settings; 
     // initializing cursor position
     old_config.cursor_x = 0;
@@ -377,10 +385,12 @@ int main(int argc, char** argv) {
 
     new_settings = old_config.old_settings;
     enable_raw_mode(&new_settings);  
-    old_config.window_size = get_window_size(); 
+
     if (argc >1){
         OpenEditor(argv[1]);
     }
+
+    old_config.window_size = get_window_size(); 
     while (1) {
         clear_screen(old_config.window_size.ws_row, old_config.window_size.ws_col);
         key_process();
