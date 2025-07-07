@@ -4,19 +4,33 @@ terminal_configurations old_config ;
 
 
 
-enum editorKey {
-  ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
-                    // which will help us to differentiate from regular chars (previously 'w')
-                    // However since windows uses the MSVC compiler that considers chars unsigned we chose 256 just to be safe (1 unsigned byte -> 255)
-  ARROW_RIGHT,
-  ARROW_UP,
-  ARROW_DOWN,
-  PAGE_UP,
-  PAGE_DOWN,
-  HOME_KEY,
-  END_KEY,
-  DELETE_KEY
-};
+///////////////////////////////////////////////////////
+
+void append_buffer(text_buffer* current_text_buff, char* c, int length_c){
+    int length_b = current_text_buff->length;
+    char* new_text = realloc(current_text_buff->text, length_b + length_c);
+
+    // let's avoid any memory problems
+    if (new_text == NULL) {
+        printf("The text you wish to mqnipulate is NULL");
+        return;
+    }
+
+    else{
+        // now we add c to our current_text
+        for (__uint8_t i = 0; i < length_c; i++) {
+            new_text[length_b + i] = c[i];
+        }
+        current_text_buff->length += length_c;
+        current_text_buff->text = new_text;
+    }
+
+}
+
+void free_text_buffer(text_buffer* current_text_buffer){
+    free(current_text_buffer->text); // length is just an int, only text has to be freed
+}
+
 ////////////////////////////////////////////////////////////////
 void move_cursor(int direction){
 
@@ -66,7 +80,7 @@ void move_cursor(int direction){
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
     
-    for (int i = 0; i < ws_row - 1; i++) {
+    for (int i = 0; i < ws_row ; i++) {
         if (old_config.nrows <= i) {
             if (old_config.nrows == 0 && i == old_config.window_size.ws_row / 3) {
                 /* write(STDOUT_FILENO, "~\r\n", 3) ; */
@@ -94,11 +108,11 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
             }
         } 
         else {
-            int len = old_config.editor_row.row_size;
+            int len = old_config.editor_row[i].row_size;
             if (len > old_config.window_size.ws_col) {
                 len = old_config.window_size.ws_col;
             }
-            append_buffer(tildes_buff, old_config.editor_row.row_data, len);
+            append_buffer(tildes_buff, old_config.editor_row[i].row_data, len);
         }
 
         append_buffer(tildes_buff, "\x1b[K", 3); // Efface la ligne jusqu'à la fin
@@ -305,35 +319,26 @@ void enable_raw_mode(struct termios *settings) {
     }
 }
 
-///////////////////////////////////////////////////////
-
-void append_buffer(text_buffer* current_text_buff, char* c, int length_c){
-    int length_b = current_text_buff->length;
-    char* new_text = realloc(current_text_buff->text, length_b + length_c);
-
-    // let's avoid any memory problems
-    if (new_text == NULL) {
-        printf("The text you wish to mqnipulate is NULL");
-        return;
-    }
-
-    else{
-        // now we add c to our current_text
-        for (__uint8_t i = 0; i < length_c; i++) {
-            new_text[length_b + i] = c[i];
-        }
-        current_text_buff->length += length_c;
-        current_text_buff->text = new_text;
-    }
-
-}
-
-void free_text_buffer(text_buffer* current_text_buffer){
-    free(current_text_buffer->text); // length is just an int, only text has to be freed
-}
-
 
 /////////////////////////////////////////////////////////////////////
+
+void editorInsertRow(char* opening_line, ssize_t len) {
+    /* To support multiple lines storage into the buffer */
+    old_config.editor_row = realloc(old_config.editor_row, sizeof(plain_row) * (old_config.nrows + 1)) ; /* + 1 for the new line */
+
+    /* Index of the new line to store */
+    int idx = old_config.nrows ;
+
+    old_config.editor_row[idx].row_size = len;
+    old_config.editor_row[idx].row_data  = malloc(len + 1);
+    memcpy(old_config.editor_row[idx].row_data, opening_line, len);
+    old_config.editor_row[idx].row_data[len] = '\0';
+
+    /* Increment the number of rows as a new line has been stored */
+    old_config.nrows += 1;
+}
+
+//////////////////////////////////////////////////////////////////////
 
 
 void OpenEditor(char* filename){
@@ -343,20 +348,17 @@ void OpenEditor(char* filename){
     char *opening_line = NULL; 
     size_t cap = 0;
     ssize_t len; 
-    len = getline(&opening_line,&cap,fptr);
-    if(len != -1){//assert exit succes
-        while(len >0 && opening_line[len -1] != '\r' && opening_line[len -1] !='\n' ){
+    /* While loop to read / store all the lines of the file */
+    while ((len = getline(&opening_line,&cap,fptr)) != -1) {
+        while (len > 0 && (opening_line[len - 1] == '\n' || opening_line[len - 1] == '\r')) {
             len--;
         }
-        old_config.editor_row.row_size = len;
-        old_config.editor_row.row_data  = malloc(len + 1);
-        memcpy(old_config.editor_row.row_data,opening_line,len);
-        old_config.editor_row.row_data[len] = '\0';
-        old_config.nrows = 1;
+        editorInsertRow(opening_line, len) ;
     }
     free(opening_line);
     fclose(fptr) ;      /* Close the file rather than free the pointer (which is not correct) */
 }
+
 
 
 
@@ -366,6 +368,7 @@ int main(int argc, char** argv) {
     old_config.cursor_x = 0;
     old_config.cursor_y = 0;
     old_config.nrows = 0;
+    old_config.editor_row = NULL ;
     
     // Récupérer les anciens réglages avant toute modification
     if (tcgetattr(STDIN_FILENO, &old_config.old_settings) == -1) {
@@ -385,3 +388,5 @@ int main(int argc, char** argv) {
 
     return EXIT_SUCCESS;
 }
+
+

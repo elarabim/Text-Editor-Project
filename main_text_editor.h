@@ -19,17 +19,37 @@ does not support a variable returned from another function */
 
 #define BEE_version "1.0"
 
+
+
+enum editorKey {
+  ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
+                    // which will help us to differentiate from regular chars (previously 'w')
+                    // However since windows uses the MSVC compiler that considers chars unsigned we chose 256 just to be safe (1 unsigned byte -> 255)
+  ARROW_RIGHT,
+  ARROW_UP,
+  ARROW_DOWN,
+  PAGE_UP,
+  PAGE_DOWN,
+  HOME_KEY,
+  END_KEY,
+  DELETE_KEY
+};
+
+
+
 typedef struct{
     int row_size;
     char *row_data;
 } plain_row;
+
+
 typedef struct {
     int cursor_x;
     int cursor_y;
     int nrows;
     struct termios old_settings ;
     struct winsize window_size;
-    plain_row editor_row; 
+    plain_row* editor_row;
 } terminal_configurations ;
 
 typedef struct {
@@ -63,3 +83,5 @@ void append_buffer(text_buffer* current_text_buff, char* c, int length_c);
 void free_text_buffer(text_buffer* current_text_buffer);
 
 void move_cursor(int direction);
+
+void editorInsertRow(char* opening_line, ssize_t len) ;
