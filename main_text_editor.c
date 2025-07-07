@@ -65,41 +65,54 @@ void move_cursor(int direction){
 
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
+    
     for (int i = 0; i < ws_row - 1; i++) {
-            if (old_config.nrows <= i){
-            append_buffer(tildes_buff, "~", 1);
-            if (i == ws_row/2 && old_config.nrows ==0){
-            /* write(STDOUT_FILENO, "~\r\n", 3) ; */
-            /// Welcome message ///
-                int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff), "BEE text editor -- Version %s", BEE_version);
-            
-                if (big_welcome > ws_col){ 
-                    append_buffer(tildes_buff, welcome_buff, ws_col);}
-                else{
-                    int center = (ws_col - big_welcome)/2 - 1; // The - 1 is to take account for ~
-                    while (center != 0){
+        if (old_config.nrows <= i) {
+            if (old_config.nrows == 0 && i == old_config.window_size.ws_row / 3) {
+                /* write(STDOUT_FILENO, "~\r\n", 3) ; */
+                /// Welcome message ///
+                
+                int big_welcome = snprintf(welcome_buff, sizeof(welcome_buff),
+                                           "BEE text editor -- Version %s", BEE_version);
+                
+                append_buffer(tildes_buff, "~", 1);
+
+                if (big_welcome > ws_col) {
+                    append_buffer(tildes_buff, welcome_buff, ws_col);
+                } 
+                else {
+                    int center = (ws_col - big_welcome) / 2 - 1; // The - 1 is to take account for ~
+                    while (center != 0) {
                         append_buffer(tildes_buff, " ", 1);
                         center--;
                     }
-                    append_buffer(tildes_buff, welcome_buff, big_welcome);}
+                    append_buffer(tildes_buff, welcome_buff, big_welcome);
                 }
-            else{
-                int len = old_config.nrows;
-                if (len >old_config.window_size.ws_col){
-                    len = old_config.window_size.ws_col;
-                }
-                append_buffer(tildes_buff, old_config.editor_row.row_data, len);
+            } 
+            else {
+                append_buffer(tildes_buff, "~", 1);
             }
-            append_buffer(tildes_buff,"\x1b[K", 3); // K command : erease line; 1: left of the cursor (so we don't delete ~)
-            append_buffer(tildes_buff,"\r\n", 2);}
-            append_buffer(tildes_buff, "~", 1);
+        } 
+        else {
+            int len = old_config.editor_row.row_size;
+            if (len > old_config.window_size.ws_col) {
+                len = old_config.window_size.ws_col;
+            }
+            append_buffer(tildes_buff, old_config.editor_row.row_data, len);
         }
 
-    
+        append_buffer(tildes_buff, "\x1b[K", 3); // Efface la ligne jusqu'à la fin
+        append_buffer(tildes_buff, "\r\n", 2);
+    }
+
+    append_buffer(tildes_buff, "~", 1);
+
+
 
    /*  write(STDOUT_FILENO, "~", 1) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; */
 }
+
 
 
 void clear_screen(int ws_row, int ws_col){
@@ -318,10 +331,14 @@ void append_buffer(text_buffer* current_text_buff, char* c, int length_c){
 void free_text_buffer(text_buffer* current_text_buffer){
     free(current_text_buffer->text); // length is just an int, only text has to be freed
 }
+
+
 /////////////////////////////////////////////////////////////////////
-void OpenEditor(char *filename){
-    FILE *fptr = fopen(filename,"r");
-    if(fptr ==NULL){kill("fopen doesn'r work");};
+
+
+void OpenEditor(char* filename){
+    FILE* fptr = fopen(filename,"r");
+    if(fptr ==NULL){kill("fopen doesn't work\n");};
 
     char *opening_line = NULL; 
     size_t cap = 0;
@@ -338,9 +355,12 @@ void OpenEditor(char *filename){
         old_config.nrows = 1;
     }
     free(opening_line);
-    free(fptr);
+    fclose(fptr) ;      /* Close the file rather than free the pointer (which is not correct) */
 }
-int main(int argc,char *argv) {
+
+
+
+int main(int argc, char** argv) {
     struct termios new_settings; 
     // initializing cursor position
     old_config.cursor_x = 0;
@@ -349,7 +369,7 @@ int main(int argc,char *argv) {
     
     // Récupérer les anciens réglages avant toute modification
     if (tcgetattr(STDIN_FILENO, &old_config.old_settings) == -1) {
-        kill("Could not get terminal attributes");
+        kill("Could not get terminal attributes\n");
     }
 
     new_settings = old_config.old_settings;
