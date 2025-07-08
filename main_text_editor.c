@@ -31,24 +31,60 @@ void free_text_buffer(text_buffer* current_text_buffer){
     free(current_text_buffer->text); // length is just an int, only text has to be freed
 }
 
+void scroll(){
+    /* Vertical scrolling */
+    if (old_config.cursor_y < old_config.row_offset) {
+        // this checks if the cursor is above visibale window
+        old_config.row_offset = old_config.cursor_y;}
+    else if (old_config.cursor_y >= (old_config.window_size).ws_row + old_config.row_offset) { 
+        // this checks if the cursor is bellow visibale window
+        old_config.row_offset = old_config.cursor_y - (old_config.window_size).ws_row + 1;}
+
+    /* Horizontal scrolling */
+    if (old_config.cursor_x < old_config.column_offset) {
+        // this checks if the cursor is at the left visibale window
+        old_config.column_offset = old_config.cursor_x;}
+    else if (old_config.cursor_x >= (old_config.window_size).ws_col + old_config.row_offset) { 
+        // this checks if the cursor is at the right visibale window
+        old_config.column_offset = old_config.cursor_x - (old_config.window_size).ws_col + 1;}
+}
+
+void valid_row(plain_row **row, terminal_configurations old_config){
+    if (old_config.cursor_y <= old_config.nrows - 1){ //  since cursor_y starts out from 0 we substract 1 from nrows
+        // In this case our cursor is at worst at the bottom of the file, so we can give the user the permission 
+        // to go one line down to write somthing
+        int cursor_y = old_config.cursor_y;
+        *row = &old_config.editor_row[cursor_y];
+    }
+
+}
 ////////////////////////////////////////////////////////////////
 void move_cursor(int direction){
 
+    plain_row *row = NULL;
+
+    valid_row(&row, old_config);
+
     if (direction == ARROW_UP) {
-        if (old_config.cursor_y > 0)
+        if (old_config.cursor_y > 0){
             old_config.cursor_y--;}
+            }
 
     else if (direction == ARROW_DOWN) {
-    if (old_config.cursor_y < old_config.window_size.ws_row - 1)
-        old_config.cursor_y++;}
+    if (old_config.cursor_y < old_config.nrows){ // we'll be comparing our y to nrows instaed of windowsize
+        old_config.cursor_y++;
+      }}
 
     else if (direction == ARROW_RIGHT) {
-        if (old_config.cursor_x < old_config.window_size.ws_col - 1)
+        // 
+        /* if (old_config.cursor_x < old_config.window_size.ws_col - 1) */
+        if (row && old_config.cursor_x <= row->row_size - 1){
             old_config.cursor_x++;}
+        }
 
     else if (direction == ARROW_LEFT) {
-        if (old_config.cursor_x > 0) 
-            old_config.cursor_x--;
+        if (old_config.cursor_x > 0){
+            old_config.cursor_x--;}
         }
 
     else if (direction == PAGE_UP){
@@ -75,7 +111,18 @@ void move_cursor(int direction){
             old_config.cursor_x--;
         }
     }
-}
+
+    valid_row(&row,old_config);
+    int row_length;
+    if (row){
+        row_length = row->row_size;
+    }
+    else{
+        row_length = 0;
+    }
+    if (old_config.cursor_x > row_length) {
+        old_config.cursor_x = row_length;
+}}
 
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
@@ -109,14 +156,19 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
             }
         } 
         else {
-            int len = old_config.editor_row[file_row].row_size;
-            if (len > old_config.window_size.ws_col) {
-                len = old_config.window_size.ws_col;
+            int length_row = old_config.editor_row[file_row].row_size - old_config.column_offset;// This will store the size of what is on the left of the offset
+            if (length_row < 0){ length_row = 0;} // length might be negative as the offset could be bigger than the row_size 
+                                                    // (offest = 5 for an empty row for example)
+            if (length_row > old_config.window_size.ws_col) {
+                length_row = old_config.window_size.ws_col;
             }
-            append_buffer(tildes_buff, old_config.editor_row[file_row].row_data, len);
+            int column_offset = old_config.column_offset;
+            append_buffer(tildes_buff, &old_config.editor_row[file_row].row_data[column_offset], length_row); // we'll have to start from column_offset to 
+                                                                                                                // get the right start for our text as we scroll horizontaly too, to do
+                                                                                                                // so we'll have to usea pointerto the column in question
         }
 
-        /* append_buffer(tildes_buff, "\x1b[K", 3); */  // Efface la ligne jusqu'à la fin
+        append_buffer(tildes_buff, "\x1b[K", 3);  // Efface la ligne jusqu'à la fin
         append_buffer(tildes_buff, "\r\n", 2);
     }
 
@@ -132,11 +184,13 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
 
 void clear_screen(int ws_row, int ws_col){
     text_buffer initializing_screen = {NULL,0};
+
+    scroll(); // we must position the cursor well before reseting the screen
     // we'll hide the cursor before drawing the tildes
     append_buffer(&initializing_screen,"\x1b[?25l", 6);//?25: hide cursor; l: lowercase "L" -> disable (cursor)
 
     //we'll replace this clearing command with a line by line one in draw_tildes
-    append_buffer(&initializing_screen,"\x1b[2J", 4); // J command: clear the screen ; 2: all of the screen
+    /* append_buffer(&initializing_screen,"\x1b[2J", 4); */ // J command: clear the screen ; 2: all of the screen
     append_buffer(&initializing_screen,"\x1b[1;1H", 6); // H command : cursor position
     /* write(STDOUT_FILENO, "\x1b[2J", 4) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; // The values by default are 1;1 so we could've simply written \x1b[ whic
@@ -145,7 +199,9 @@ void clear_screen(int ws_row, int ws_col){
 
     // here we'll be positioning the cursor as indicated by the coordinates
     char cursor_at_will[32];
-    snprintf(cursor_at_will, sizeof(cursor_at_will), "\x1b[%d;%dH", old_config.cursor_y + 1, old_config.cursor_x + 1);
+    // now that our y coordinate refers to the cursor's vertical position in the file ( and not the screen) to reposition it 
+    // to the top of the screen we'll have to subtract olf_config.row_offset from it, same goes with the x coordinate
+    snprintf(cursor_at_will, sizeof(cursor_at_will), "\x1b[%d;%dH",(old_config.cursor_y - old_config.row_offset) + 1,(old_config.cursor_x - old_config.column_offset)+ 1);  
 
     //once we're done drawing the tildes we recover the cursor;
     append_buffer(&initializing_screen,"\x1b[?25h", 6);
@@ -365,18 +421,25 @@ void OpenEditor(char* filename){
     free(opening_line);
     fclose(fptr) ;      /* Close the file rather than free the pointer (which is not correct) */
 }
-
+void intializeeditor(){
+    // initializing row and column offset 
+    old_config.row_offset = 0;
+    old_config.column_offset = 0;
+    // initializing cursor position
+    old_config.cursor_x = 0;
+    old_config.cursor_y = 0;
+    // initializing the file's number of rows
+    old_config.nrows = 0;
+    // intializing our editor's editor_row with a NULL type for later modifications
+    old_config.editor_row = NULL ;
+}
 
 
 
 int main(int argc, char** argv) {
 
     struct termios new_settings; 
-    // initializing cursor position
-    old_config.cursor_x = 0;
-    old_config.cursor_y = 0;
-    old_config.nrows = 0;
-    old_config.editor_row = NULL ;
+    intializeeditor();
     
     // Récupérer les anciens réglages avant toute modification
     if (tcgetattr(STDIN_FILENO, &old_config.old_settings) == -1) {
@@ -398,5 +461,4 @@ int main(int argc, char** argv) {
 
     return EXIT_SUCCESS;
 }
-
 

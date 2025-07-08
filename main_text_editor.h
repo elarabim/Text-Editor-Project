@@ -46,11 +46,12 @@ typedef struct{
 typedef struct {
     int cursor_x;
     int cursor_y;
-    int nrows;
+    int nrows; // number of rows in the file
     struct termios old_settings ;
     struct winsize window_size;
-    int row_offset;
-    plain_row* editor_row;
+    int row_offset; // which line of the file is shown at the top of the window
+    int column_offset;
+    plain_row* editor_row; // a row from the file
 } terminal_configurations ;
 
 typedef struct {
@@ -61,6 +62,7 @@ typedef struct {
 
 
 void OpenEditor();
+
 void draw_tildes(int ws_row, int col, text_buffer* tildes_buff);
 
 void clear_screen(int ws_row, int col);
@@ -86,3 +88,7 @@ void free_text_buffer(text_buffer* current_text_buffer);
 void move_cursor(int direction);
 
 void editorInsertRow(char* opening_line, ssize_t len) ;
+
+void scroll();
+
+void valid_row(plain_row **row, terminal_configurations old_config);
