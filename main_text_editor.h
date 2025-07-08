@@ -19,7 +19,7 @@ does not support a variable returned from another function */
 
 #define BEE_version "1.0"
 
-
+#define BEE_TAB_STOP 8 //definir le nombre dont le tab arrêt s'il divise
 
 enum editorKey {
   ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
@@ -39,13 +39,17 @@ enum editorKey {
 
 typedef struct{
     int row_size;
+int ren_size;
     char *row_data;
+    char *render;//a string to handle tab for now,as the size of tab when applied is 8,when it can be written in 1 byte
+
 } plain_row;
 
 
 typedef struct {
     int cursor_x;
     int cursor_y;
+    int render_x; //cursor when considering tabs
     int nrows; // number of rows in the file
     struct termios old_settings ;
     struct winsize window_size;

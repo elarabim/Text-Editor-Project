@@ -30,9 +30,24 @@ void append_buffer(text_buffer* current_text_buff, char* c, int length_c){
 void free_text_buffer(text_buffer* current_text_buffer){
     free(current_text_buffer->text); // length is just an int, only text has to be freed
 }
-
+int cusror_x2render_x(plain_row *row,int cursor_x){
+    int render_x =0;
+    for (int i=0;i<cursor_x;i++){
+        render_x++;//normal character or a tab
+        if (row->row_data[i] == '\t'){
+            while (render_x%BEE_TAB_STOP != 0){
+                render_x++;
+            }
+        }
+    }
+    return render_x;
+}
 void scroll(){
     /* Vertical scrolling */
+    old_config.render_x = 0;
+    if (old_config.cursor_y < old_config.row_offset){
+        old_config.render_x = cusror_x2render_x(&old_config.editor_row[old_config.cursor_y],old_config.cursor_x);
+    }
     if (old_config.cursor_y < old_config.row_offset) {
         // this checks if the cursor is above visibale window
         old_config.row_offset = old_config.cursor_y;}
@@ -41,12 +56,12 @@ void scroll(){
         old_config.row_offset = old_config.cursor_y - (old_config.window_size).ws_row + 1;}
 
     /* Horizontal scrolling */
-    if (old_config.cursor_x < old_config.column_offset) {
+    if (old_config.render_x < old_config.column_offset) {
         // this checks if the cursor is at the left visibale window
-        old_config.column_offset = old_config.cursor_x;}
-    else if (old_config.cursor_x >= (old_config.window_size).ws_col + old_config.row_offset) { 
+        old_config.column_offset = old_config.render_x;}
+    else if (old_config.render_x >= (old_config.window_size).ws_col + old_config.column_offset) { 
         // this checks if the cursor is at the right visibale window
-        old_config.column_offset = old_config.cursor_x - (old_config.window_size).ws_col + 1;}
+        old_config.column_offset = old_config.render_x - (old_config.window_size).ws_col + 1;}
 }
 
 void valid_row(plain_row **row, terminal_configurations old_config){
@@ -80,12 +95,29 @@ void move_cursor(int direction){
         /* if (old_config.cursor_x < old_config.window_size.ws_col - 1) */
         if (row && old_config.cursor_x <= row->row_size - 1){
             old_config.cursor_x++;}
+        
+        else if(old_config.cursor_x == old_config.editor_row[old_config.cursor_y].row_size){
+            if (old_config.cursor_y < old_config.nrows){
+                old_config.cursor_x = 0;
+                old_config.cursor_y++;
+            }
+        
         }
-
+    }
     else if (direction == ARROW_LEFT) {
         if (old_config.cursor_x > 0){
             old_config.cursor_x--;}
+        
+        else if (old_config.cursor_x == 0)
+        {
+            if (old_config.cursor_y >0){
+                /* old_config.cursor_x = old_config.editor_row->row_size; */
+                //editor row contain aall visible rows ?
+                old_config.cursor_y--;
+                old_config.cursor_x = old_config.editor_row[old_config.cursor_y].row_size; 
+            }
         }
+    }
 
     else if (direction == PAGE_UP){
         
@@ -123,7 +155,6 @@ void move_cursor(int direction){
     if (old_config.cursor_x > row_length) {
         old_config.cursor_x = row_length;
 }}
-
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
    
@@ -156,14 +187,14 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
             }
         } 
         else {
-            int length_row = old_config.editor_row[file_row].row_size - old_config.column_offset;// This will store the size of what is on the left of the offset
+            int length_row = old_config.editor_row[file_row].ren_size - old_config.column_offset;// This will store the size of what is on the left of the offset
             if (length_row < 0){ length_row = 0;} // length might be negative as the offset could be bigger than the row_size 
                                                     // (offest = 5 for an empty row for example)
             if (length_row > old_config.window_size.ws_col) {
                 length_row = old_config.window_size.ws_col;
             }
             int column_offset = old_config.column_offset;
-            append_buffer(tildes_buff, &old_config.editor_row[file_row].row_data[column_offset], length_row); // we'll have to start from column_offset to 
+            append_buffer(tildes_buff, &old_config.editor_row[file_row].render[column_offset], length_row); // we'll have to start from column_offset to 
                                                                                                                 // get the right start for our text as we scroll horizontaly too, to do
                                                                                                                 // so we'll have to usea pointerto the column in question
         }
@@ -179,6 +210,7 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
    /*  write(STDOUT_FILENO, "~", 1) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; */
 }
+
 
 
 
@@ -384,7 +416,29 @@ void enable_raw_mode(struct termios *settings) {
 
 
 /////////////////////////////////////////////////////////////////////
-
+void editorUpdatRow(plain_row* row){
+    int num_tabs = 0;
+    for(int j=0;j<row->ren_size;j++){
+        if( row->row_data[j] == '\t'){
+            num_tabs++;
+        }
+    }
+    free(row->render);
+    row->render = malloc(row->row_size + (BEE_TAB_STOP-1)*num_tabs+1);//maximum d'espace ajouté par tab est 7 par défaut
+    //à l'instant,on copie juste  le contenu
+    int idx_render = 0;
+    //we use two indices because later we will use that for differentiating render and original indices.                                                                                                                                                                                   
+    for(int i=0;i<row->row_size;i++){
+        if (row->row_data[i] == '\t'){
+            row->render[idx_render++] = ' ';
+            while(idx_render %BEE_TAB_STOP != 0){row->render[idx_render++]= ' ';}
+        }
+        else {row->render[idx_render++] = row->row_data[i];}
+    }
+    
+    row->render[idx_render] = '\0';
+    row->ren_size = idx_render;;
+}
 void editorInsertRow(char* opening_line, ssize_t len) {
     /* To support multiple lines storage into the buffer */
     old_config.editor_row = realloc(old_config.editor_row, sizeof(plain_row) * (old_config.nrows + 1)) ; /* + 1 for the new line */
@@ -398,6 +452,11 @@ void editorInsertRow(char* opening_line, ssize_t len) {
     old_config.editor_row[idx].row_data[len] = '\0';
 
     /* Increment the number of rows as a new line has been stored */
+   /*  old_config.nrows += 1; */
+
+    old_config.editor_row->ren_size =0;
+    old_config.editor_row->render = NULL;
+    editorUpdatRow(&old_config.editor_row[idx]);
     old_config.nrows += 1;
 }
 
@@ -428,10 +487,13 @@ void intializeeditor(){
     // initializing cursor position
     old_config.cursor_x = 0;
     old_config.cursor_y = 0;
+    old_config.render_x = 0;
     // initializing the file's number of rows
     old_config.nrows = 0;
     // intializing our editor's editor_row with a NULL type for later modifications
     old_config.editor_row = NULL ;
+
+    
 }
 
 
