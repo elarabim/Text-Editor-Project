@@ -12,7 +12,7 @@ void append_buffer(text_buffer* current_text_buff, char* c, int length_c){
 
     // let's avoid any memory problems
     if (new_text == NULL) {
-        printf("The text you wish to mqnipulate is NULL");
+        printf("The text you wish to manipulate is NULL");
         return;
     }
 
@@ -161,6 +161,9 @@ void move_cursor(int direction){
     if (old_config.cursor_x > row_length) {
         old_config.cursor_x = row_length;
 }}
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
    
@@ -208,16 +211,56 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
         append_buffer(tildes_buff, "\x1b[K", 3);  // Efface la ligne jusqu'à la fin
         append_buffer(tildes_buff, "\r\n", 2);
     }
-
-  /*   append_buffer(tildes_buff, "~", 1); */
-
-
-
+   /*  append_buffer(tildes_buff, "~", 1); */
    /*  write(STDOUT_FILENO, "~", 1) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; */
 }
 
+void draw_status_bar(text_buffer *status_buff){
+    // first let's invert colors
+    int n_columns = old_config.window_size.ws_col;
+    append_buffer(status_buff, "\x1b[7m", 4);
 
+    char status_text[32];
+    char current_line[32];
+
+    int status_text_length = 0;
+    int current_line_text_length = 0;
+
+    current_line_text_length = snprintf(current_line, sizeof(current_line), "%d/%d", old_config.cursor_y + 1, old_config.nrows);
+
+    if (old_config.file_name){
+        status_text_length = snprintf(status_text, sizeof(status_text), "%.20s - %d lines",old_config.file_name ,old_config.nrows);
+    }
+    else{ status_text_length = snprintf(status_text, sizeof(status_text), "%.20s - %d lines","[No Name]" , old_config.nrows); }
+    
+    if (status_text_length > n_columns) {status_text_length = n_columns;}
+
+    // now let's draw the status bar
+    append_buffer(status_buff, status_text, status_text_length);
+    
+    for (int i = status_text_length; i < n_columns; i++){
+        if (n_columns - i == current_line_text_length ){
+            append_buffer(status_buff, current_line, current_line_text_length);
+            break;
+        }
+        else {
+            append_buffer(status_buff, " ", 1);}
+    }
+    //finally we recover default parameters for colors
+    append_buffer(status_buff,"\x1b[m", 3);
+    append_buffer(status_buff, "\r\n", 2); //making place for our status message
+}
+
+void draw_message_bar(text_buffer *message_buff){
+    int n_columns = old_config.window_size.ws_col;
+    append_buffer(message_buff, "\x1b[K", 3);
+    int message_length = strlen(old_config.status_message);
+    if ( message_length > n_columns ){
+        message_length = n_columns;}
+    if( message_length && time(NULL) - old_config.status_message_time < 5 ){ /* our timeout will be 5s*/
+        append_buffer(message_buff, old_config.status_message,message_length);}
+    }
 
 
 void clear_screen(int ws_row, int ws_col){
@@ -233,7 +276,19 @@ void clear_screen(int ws_row, int ws_col){
     /* write(STDOUT_FILENO, "\x1b[2J", 4) ;
     write(STDOUT_FILENO, "\x1b[1;1H", 6) ; // The values by default are 1;1 so we could've simply written \x1b[ whic
                                            // would only take 3 bytes */
+
+    /////////////////////////////// Drawing /////////////////////////////////////////
     draw_tildes(ws_row, ws_col, &initializing_screen);
+
+    // now that we are exactly at the bottom of the file we'll draw our status bar
+
+    draw_status_bar(&initializing_screen);
+
+    // now we draw the message bar
+
+    draw_message_bar(&initializing_screen);
+
+    /////////////////////////////////////////////////////////////////////////////////
 
     // here we'll be positioning the cursor as indicated by the coordinates
     char cursor_at_will[32];
@@ -422,7 +477,7 @@ void enable_raw_mode(struct termios *settings) {
 
 
 /////////////////////////////////////////////////////////////////////
-void editorUpdatRow(plain_row* row){
+void update_row(plain_row* row){
     int num_tabs = 0;
     for(int j=0;j<row->ren_size;j++){
         if( row->row_data[j] == '\t'){
@@ -445,7 +500,7 @@ void editorUpdatRow(plain_row* row){
     row->render[idx_render] = '\0';
     row->ren_size = idx_render;;
 }
-void editorInsertRow(char* opening_line, ssize_t len) {
+void insert_row(char* opening_line, ssize_t len) {
     /* To support multiple lines storage into the buffer */
     old_config.editor_row = realloc(old_config.editor_row, sizeof(plain_row) * (old_config.nrows + 1)) ; /* + 1 for the new line */
 
@@ -462,17 +517,29 @@ void editorInsertRow(char* opening_line, ssize_t len) {
 
     old_config.editor_row[idx].ren_size =0;
     old_config.editor_row[idx].render = NULL;
-    editorUpdatRow(&old_config.editor_row[idx]);
+    update_row(&old_config.editor_row[idx]);
     old_config.nrows += 1;
 }
 
 //////////////////////////////////////////////////////////////////////
 
 
-void OpenEditor(char* filename){
+void open_editor(char* filename){
     FILE* fptr = fopen(filename,"r");
     if(fptr ==NULL){kill("fopen doesn't work\n");};
+    
+    // save a copy of the file's name in our configurations structure after getting rid of previous memory 
+    free(old_config.file_name);
+    /* old_config.file_name = filename; */ // turns out you can't just copy it this way as it an argv[1], thus it
+                                            // only has a temporary pointer assigned to it which will become invalid
+                                            //once the program is executed
 
+    // we'll allocate some memory to do so
+    char *filename_copy = malloc(strlen(filename) + 1); // the +1 is for '\0'  
+    strcpy(filename_copy, filename);
+    old_config.file_name = filename_copy;
+    
+    
     char *opening_line = NULL; 
     size_t cap = 0;
     ssize_t len; 
@@ -481,12 +548,21 @@ void OpenEditor(char* filename){
         while (len > 0 && (opening_line[len - 1] == '\n' || opening_line[len - 1] == '\r')) {
             len--;
         }
-        editorInsertRow(opening_line, len) ;
+        insert_row(opening_line, len) ;
     }
     free(opening_line);
     fclose(fptr) ;      /* Close the file rather than free the pointer (which is not correct) */
 }
-void intializeeditor(){
+
+void set_status_message(const char *format, ...){ // format : %s %d etc
+    va_list variable_list;
+    va_start(variable_list, format); // start reading variables comming after format
+    vsnprintf(old_config.status_message, sizeof(old_config.status_message), format, variable_list);
+    va_end(variable_list);
+    old_config.status_message_time = time(NULL); // returns the time that has past since the Unix epoch
+}
+
+void intialize_editor(){
     // initializing row and column offset 
     old_config.row_offset = 0;
     old_config.column_offset = 0;
@@ -498,8 +574,13 @@ void intializeeditor(){
     old_config.nrows = 0;
     // intializing our editor's editor_row with a NULL type for later modifications
     old_config.editor_row = NULL ;
+    // Avoiding to draw an additional tild (~)
+    old_config.window_size.ws_row -= 2;// making place for our status section (with the status message)
+    // initializing file name
+    old_config.file_name = NULL;
 
-    
+    old_config.status_message[0] = '\0';
+    old_config.status_message_time= 0;
 }
 
 
@@ -507,7 +588,9 @@ void intializeeditor(){
 int main(int argc, char** argv) {
 
     struct termios new_settings; 
-    intializeeditor();
+    // i'll extract the window size before calling initialize_editor as it modifies it
+    old_config.window_size = get_window_size(); 
+    intialize_editor();
     
     // Récupérer les anciens réglages avant toute modification
     if (tcgetattr(STDIN_FILENO, &old_config.old_settings) == -1) {
@@ -518,11 +601,12 @@ int main(int argc, char** argv) {
     enable_raw_mode(&new_settings);  
 
     if (argc >1){
-        OpenEditor(argv[1]);
+        open_editor(argv[1]);
     }
 
-    old_config.window_size = get_window_size(); 
-    old_config.nrows--;
+    set_status_message("HELP: Ctrl-Q = quit");
+    
+    /* old_config.nrows--; */
     while (1) {
         clear_screen(old_config.window_size.ws_row, old_config.window_size.ws_col);
         key_process();

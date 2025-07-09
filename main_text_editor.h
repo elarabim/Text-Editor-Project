@@ -7,7 +7,10 @@
 #include <sys/types.h>
 
 #include <ctype.h>
-#include <string.h>  // for strerror
+#include <string.h> 
+#include <time.h>
+#include <stdarg.h>
+
 #ifndef MAIN_TEXT_EDITOR_H
 #define MAIN_TEXT_EDITOR_H
 #endif
@@ -56,6 +59,9 @@ typedef struct {
     int row_offset; // which line of the file is shown at the top of the window
     int column_offset;
     plain_row* editor_row; // a row from the file
+    char* file_name;
+    char status_message[64];
+    time_t status_message_time;
 } terminal_configurations ;
 
 typedef struct {
@@ -91,8 +97,22 @@ void free_text_buffer(text_buffer* current_text_buffer);
 
 void move_cursor(int direction);
 
-void editorInsertRow(char* opening_line, ssize_t len) ;
+void insert_row(char* opening_line, ssize_t len) ;
 
 void scroll();
 
 void valid_row(plain_row **row, terminal_configurations old_config);
+
+void update_row(plain_row* row);
+
+int cusror_x2render_x(plain_row *row,int cursor_x);
+
+void intialize_editor();
+
+void open_editor(char* filename);
+
+void draw_message_bar(text_buffer *message_buff);
+
+void draw_status_bar(text_buffer *status_buff);
+
+void set_status_message(const char *format, ...);
