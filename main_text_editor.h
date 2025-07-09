@@ -39,7 +39,7 @@ enum editorKey {
 
 typedef struct{
     int row_size;
-int ren_size;
+    int ren_size;
     char *row_data;
     char *render;//a string to handle tab for now,as the size of tab when applied is 8,when it can be written in 1 byte
 
