@@ -209,7 +209,7 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
         append_buffer(tildes_buff, "\r\n", 2);
     }
 
-   /*  append_buffer(tildes_buff, "~", 1); */
+  /*   append_buffer(tildes_buff, "~", 1); */
 
 
 
