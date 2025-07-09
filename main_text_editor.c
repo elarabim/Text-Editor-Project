@@ -44,7 +44,12 @@ int cusror_x2render_x(plain_row *row,int cursor_x){
 }
 void scroll(){
     /* Vertical scrolling */
-    old_config.render_x = 0;
+    plain_row *row = (old_config.cursor_y >= old_config.nrows) ? NULL : &old_config.editor_row[old_config.cursor_y];
+    if (row) {
+        old_config.render_x = cusror_x2render_x(row, old_config.cursor_x);
+    } else {
+        old_config.render_x = 0;
+    }
     if (old_config.cursor_y < old_config.row_offset){
         old_config.render_x = cusror_x2render_x(&old_config.editor_row[old_config.cursor_y],old_config.cursor_x);
     }
@@ -121,22 +126,23 @@ void move_cursor(int direction){
 
     else if (direction == PAGE_UP){
         
-        while (old_config.cursor_y > 0){
-            old_config.cursor_y--;
+        old_config.cursor_y = old_config.row_offset;
+        for(int i= old_config.nrows;i>0;i--){
+            move_cursor(ARROW_UP);
         }
-        
     }
     else if (direction == PAGE_DOWN){
        
-        while (old_config.cursor_y <get_window_size().ws_row -1){
-            old_config.cursor_y++;
+        old_config.cursor_y  =old_config.cursor_y<old_config.nrows?get_window_size().ws_row -1 + old_config.row_offset:old_config.nrows;
+            
+        for(int i= old_config.nrows;i>0;i--){
+            move_cursor(ARROW_DOWN);
         }
         
     }
     else if  (direction == END_KEY){//move to the edge right
-         while (old_config.cursor_x <get_window_size().ws_col -1){
-            old_config.cursor_x++;
-        }
+        old_config.cursor_x =  old_config.cursor_y<old_config.nrows?old_config.editor_row[old_config.cursor_y].row_size:old_config.cursor_x;
+            
     }
     else if (direction == HOME_KEY){//move to the far left
         while (old_config.cursor_x >0){
@@ -158,7 +164,7 @@ void move_cursor(int direction){
 void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
    
-    for (int i = 0; i < ws_row - 1 ; i++) {
+    for (int i = 0; i < ws_row  ; i++) {
         int file_row = i + old_config.row_offset ;
         if (old_config.nrows <= file_row) {
             if (old_config.nrows == 0 && i == old_config.window_size.ws_row / 3) {
@@ -203,7 +209,7 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
         append_buffer(tildes_buff, "\r\n", 2);
     }
 
-    append_buffer(tildes_buff, "~", 1);
+   /*  append_buffer(tildes_buff, "~", 1); */
 
 
 
@@ -454,8 +460,8 @@ void editorInsertRow(char* opening_line, ssize_t len) {
     /* Increment the number of rows as a new line has been stored */
    /*  old_config.nrows += 1; */
 
-    old_config.editor_row->ren_size =0;
-    old_config.editor_row->render = NULL;
+    old_config.editor_row[idx].ren_size =0;
+    old_config.editor_row[idx].render = NULL;
     editorUpdatRow(&old_config.editor_row[idx]);
     old_config.nrows += 1;
 }
@@ -516,6 +522,7 @@ int main(int argc, char** argv) {
     }
 
     old_config.window_size = get_window_size(); 
+    old_config.nrows--;
     while (1) {
         clear_screen(old_config.window_size.ws_row, old_config.window_size.ws_col);
         key_process();
