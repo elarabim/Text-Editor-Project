@@ -423,14 +423,26 @@ void insert_char_in_the_editor(int c) {
     int cy = old_config.cursor_y ;
     /* Add a new (empty) row if cursor at the end of file */
     if (cy == old_config.nrows) {
-        insert_row("", 0) ;
+        insert_row(old_config.nrows,"", 0) ;
     }
     /* Insert the char at the cursor position */
     insert_char_in_a_row(&old_config.editor_row[cy], cx, c) ;
     /* Increment the cursor position horizontally after the insertion of c */
     old_config.cursor_x += 1 ; 
 }
-
+void NewLineInsert(){
+    if (old_config.cursor_x == 0){insert_row(old_config.cursor_y,"",0);}
+    else{
+        plain_row *row =  &old_config.editor_row[old_config.cursor_y];
+        insert_row(old_config.cursor_y+1,&row->row_data[old_config.cursor_x],row->row_size-old_config.cursor_x);
+        row = &old_config.editor_row[old_config.cursor_y];
+        row->row_size = old_config.cursor_x;
+        row->row_data[row->row_size] = '\0';
+        update_row(row);
+    }
+    old_config.cursor_y++;
+    old_config.cursor_x = 0;
+}
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 /* Convert all the rows in the editor to a single string
@@ -465,11 +477,56 @@ char* rows_to_str(int* str_len) {
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 /* Save the file if modified after editing with BEE */
+// save as
+char* Prompt(char* pr){
+    size_t size_cap = 128;
+    char *buffer = malloc(size_cap);
+
+    size_t len = 0;
+    buffer[0] = '\0';
+    while(1){//repeatedly update the status message and refresh the screen
+        set_status_message(pr,buffer);
+        clear_screen(old_config.window_size.ws_row, old_config.window_size.ws_col);
+
+        int c = read_one_key();
+        if (c==DELETE_KEY ||c== CTRL_KEY('h') || c == BACKSPACE){
+            if (len !=0){buffer[--len] = '\0';}
+        }
+        else if (c == '\x1b'){//Escape character
+            set_status_message("");
+            free(buffer);
+            return NULL;//we don't want to save now
+        }
+        else if (c == '\r'){//Press Enter to save
+            if (len != 0){
+                set_status_message("");
+                return buffer;
+            }
+        }
+        else if(!iscntrl(c) && c<128){
+            if (len == size_cap -1){
+                size_cap *=2;
+                buffer = realloc(buffer,size_cap);
+            }//allocating more when we go above the capacity
+            buffer[len++] = c;
+            buffer[len] = '\0';
+      
+        }
+    }
+
+}
 
 void save_edited() {
+    
     if (old_config.file_name == NULL) {
         /* It has to be treated later on */
-        return ;
+        old_config.file_name = Prompt("Save as: %s (Press Esc to cancel save request)");
+        if (old_config.file_name == NULL){//empty save message
+            set_status_message("Could not save");
+            
+            return;
+        }
+
     }
 
     /* Convert all rows into one string */
@@ -487,6 +544,7 @@ void save_edited() {
                 free(str) ;
                 // if we get to here it surely means the saving process succeeded
                 set_status_message("Saving successed, %d bytes were written to disk", len);
+                return;
             }
         }
         close(f) ;
@@ -494,7 +552,7 @@ void save_edited() {
     // if we get to here it surely means the saving process failed
                 set_status_message("Saving failed! %s", strerror(errno));
     free(str) ;
-    
+   
     // Reset old_config.dirty to 0 once the file is saved
     old_config.dirty = 0;
 }
@@ -516,6 +574,9 @@ void key_process() {
         write(STDOUT_FILENO, "\x1b[1;1H", 6);
         exit(EXIT_SUCCESS);  // Exit the program
     } 
+    else if (key == '\r'){
+        NewLineInsert();
+    }
 
 
 
@@ -562,7 +623,30 @@ void delete_char_from_row(plain_row* row, int position){
         update_row(row);
     }
 }
+void free_row(plain_row *erow){
+    free(erow->render);
+    free(erow->row_data);
+}
 
+void delete_row(int row_index){//appending the content of a line to the previous if we press DEL_KEY
+    if (row_index<0 || row_index> old_config.nrows){return;}
+    free_row(&old_config.editor_row[row_index]);
+    memmove(&old_config.editor_row[row_index],&old_config.editor_row[row_index +1],sizeof(plain_row)*(old_config.nrows - 1 - row_index));
+    //writing there the rest of the row
+    old_config.nrows--;
+    old_config.dirty++;
+}
+
+void row_append_str(plain_row* erow,char *str,size_t len){
+    erow->row_data = realloc(erow->row_data,erow->row_size + len + 1);
+    //réallocation pour l'ajout de string et '\0'
+    memcpy(&erow->row_data[erow->row_size],str,len);
+    erow->row_size += len;
+    erow->row_data[erow->row_size] = '\0';
+    update_row(erow);
+    old_config.dirty++;
+
+}
 void delete_char(){
     int cursor_y = old_config.cursor_y;
     int cursor_x = old_config.cursor_x;
@@ -570,10 +654,18 @@ void delete_char(){
     if (cursor_y == old_config.nrows ){ // the cursor is past the EOF, there is nothing to delete
         return;
     }
+    if (cursor_x ==0 && cursor_y ==0){return;}
+
     plain_row* row = &old_config.editor_row[cursor_y];
     if (cursor_x > 0){ // if cursor_x is 0 we're at the beggining of the row, there is nothing to delete
         delete_char_from_row(row, old_config.cursor_x - 1);
         old_config.cursor_x -= 1;
+    }
+    else{//sûr que y !=0
+        old_config.cursor_x = old_config.editor_row[old_config.cursor_y -1].row_size;
+        row_append_str(&old_config.editor_row[old_config.cursor_y-1],row->row_data,row->row_size);
+        delete_row(old_config.cursor_y);
+        old_config.cursor_y--;
     }
 }
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -686,12 +778,15 @@ void update_row(plain_row* row){
 }
 
 
-void insert_row(char* opening_line, ssize_t len) {
+void insert_row(int idx,char* opening_line, ssize_t len) {
+    if (idx<0 || idx> old_config.nrows){return;}
+
+    old_config.editor_row = realloc(old_config.editor_row,sizeof(plain_row) * (old_config.nrows + 1));
     /* To support multiple lines storage into the buffer */
-    old_config.editor_row = realloc(old_config.editor_row, sizeof(plain_row) * (old_config.nrows + 1)) ; /* + 1 for the new line */
+    memcpy(&old_config.editor_row[idx + 1],&old_config.editor_row[idx],sizeof(plain_row) * (old_config.nrows - idx)); /* + 1 for the new line */
 
     /* Index of the new line to store */
-    int idx = old_config.nrows ;
+   
 
     old_config.editor_row[idx].row_size = len;
     old_config.editor_row[idx].row_data  = malloc(len + 1);
@@ -735,7 +830,7 @@ void open_editor(char* filename){
         while (len > 0 && (opening_line[len - 1] == '\n' || opening_line[len - 1] == '\r')) {
             len--;
         }
-        insert_row(opening_line, len) ;
+        insert_row(old_config.nrows,opening_line, len) ;
     }
     free(opening_line);
     fclose(fptr) ;      /* Close the file rather than free the pointer (which is not correct) */
@@ -774,9 +869,6 @@ void intialize_editor(){
     // initializing the dirty boolean
     old_config.dirty = 0;
 }
-
-
-
 
 
 int main(int argc, char** argv) {

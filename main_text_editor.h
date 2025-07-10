@@ -88,6 +88,10 @@ int read_one_key();
 
 void key_process();
 
+char* Prompt(char* pr);
+
+void NewLineInsert();
+
 struct winsize cursor_position();
 
 struct winsize get_window_size();
@@ -102,7 +106,9 @@ void free_text_buffer(text_buffer* current_text_buffer);
 
 void move_cursor(int direction);
 
-void insert_row(char* opening_line, ssize_t len) ;
+void insert_row(int row_index,char* opening_line, ssize_t len) ;
+
+
 
 void scroll();
 
