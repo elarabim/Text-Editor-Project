@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <fcntl.h>
 
 #include <ctype.h>
 #include <string.h> 
@@ -28,6 +29,7 @@ enum editorKey {
   ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
                     // which will help us to differentiate from regular chars (previously 'w')
                     // However since windows uses the MSVC compiler that considers chars unsigned we chose 256 just to be safe (1 unsigned byte -> 255)
+  BACKSPACE = 127,
   ARROW_RIGHT,
   ARROW_UP,
   ARROW_DOWN,

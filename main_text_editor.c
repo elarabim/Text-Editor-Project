@@ -377,7 +377,108 @@ int read_one_key() {
     return key ; 
 }
 
-/////////////////////////////////////////////////////////////////////
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/* Insert the char c at the position idx of the given row 
+(I used int here as key in read_one_key() has type int)*/
+
+void insert_char_in_a_row(plain_row* row, int idx, int c) {
+    /* idx not valid => char inserted at the end of the row */
+    if (idx < 0 || idx > row->row_size) {
+        idx = row->row_size ; 
+    }
+    /* Reallocate the memory for "row_data" to support the insertion of the new char */
+    row->row_data = realloc(row->row_data, row->row_size + 2) ; /* 1 for c and 1 for \0 */
+    /* Copy all the characters until idx of the old row in the reallocated "row_data" */
+    memmove(&row->row_data[idx + 1], &row->row_data[idx], row->row_size - idx + 1) ;
+    /* Increment the size of the row and inserting c properly at the posiiton idx */
+    row->row_size += 1 ; 
+    row->row_data[idx] = c ;
+    /* Updating the row following the previous changements */
+    update_row(row) ;
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/* Insert the char in the text editor */
+
+void insert_char_in_the_editor(int c) {
+    /* Cursor coordinates */
+    int cx = old_config.cursor_x ;
+    int cy = old_config.cursor_y ;
+    /* Add a new (empty) row if cursor at the end of file */
+    if (cy == old_config.nrows) {
+        insert_row("", 0) ;
+    }
+    /* Insert the char at the cursor position */
+    insert_char_in_a_row(&old_config.editor_row[cy], cx, c) ;
+    /* Increment the cursor position horizontally after the insertion of c */
+    old_config.cursor_x += 1 ; 
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/* Convert all the rows in the editor to a single string
+ => useful later to save the txt file edited 
+ The length of the string has to be memorized for ulterior use, thus the pointer */
+
+char* rows_to_str(int* str_len) {
+    /* Get the total length of the final string */
+    int len = 0 ;
+    for (int i = 0 ; i < old_config.nrows ; i++) {
+        len += old_config.editor_row[i].row_size + 1 ; /* +1 here for \n */
+    }
+    *str_len = len ;
+
+    /* Copy each row in the string, separating each one by the \n character */
+    char* str = malloc(*str_len) ;
+    char* ptr = str ;       /* this pointer will be used to move through the rows, so
+                            str doesn't loose its starting adress in the memory and so its data */
+
+    for (int i = 0 ; i < old_config.nrows ; i++) {
+        /* Copy all the bytes of the current row to the memory block at which points ptr */
+        memcpy(ptr, old_config.editor_row[i].row_data, old_config.editor_row[i].row_size) ;
+        /* Advance ptr to point at the end of the copied (ie converted) row */
+        ptr += old_config.editor_row[i].row_size ;    
+        /* Add \n to separate the copied row from the next one */
+        *ptr = '\n' ;
+        ptr ++ ;
+    }
+    return str ;
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/* Save the file if modified after editing with BEE */
+
+void save_edited() {
+    if (old_config.file_name == NULL) {
+        /* It has to be treated later on */
+        return ;
+    }
+
+    /* Convert all rows into one string */
+    int len ; 
+    char* str = rows_to_str(&len) ;
+
+    /* Open the file_name file for reading and writing or creating it 
+    if it doesn't exist
+    0644 (standard permission) : owner can read/wrtie | others can only read */
+    int f = open(old_config.file_name, O_RDWR | O_CREAT, 0644) ;
+    if (f != -1) {
+        if (ftruncate(f, len) != -1) {    /* sets the file’s size to the specified length */  
+            if (write(f, str, len) == len) {
+                close(f) ;
+                free(str) ;
+            }
+        }
+        close(f) ;
+    }
+    free(str) ;
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 void key_process() {
     int key = read_one_key();
@@ -387,6 +488,7 @@ void key_process() {
         write(STDOUT_FILENO, "\x1b[1;1H", 6);
         exit(EXIT_SUCCESS);  // Exit the program
     } 
+
     else if (key == ARROW_UP || key == ARROW_DOWN || 
             key == ARROW_LEFT || key == ARROW_RIGHT ||
             key == PAGE_UP   || key == PAGE_DOWN   ||
@@ -395,6 +497,27 @@ void key_process() {
         move_cursor(key);
     }
 
+    else if (key == CTRL_KEY('s')) {
+        save_edited() ;
+    }
+
+    else if (key == '\r') {
+        /* TODO */
+    }
+
+    else if (key == BACKSPACE || key == CTRL_KEY('h') 
+            || key == DELETE_KEY) {
+        /* TODO */
+    } 
+
+    else if (key == CTRL_KEY('l') || key == '\x1b') {
+        /* TODO */
+    }
+
+    /* If no special key is used then it's a character to insert in the editor */
+    else {
+        insert_char_in_the_editor(key) ;
+    }
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -582,6 +705,8 @@ void intialize_editor(){
     old_config.status_message[0] = '\0';
     old_config.status_message_time= 0;
 }
+
+
 
 
 
