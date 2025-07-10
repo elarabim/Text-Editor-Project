@@ -25,6 +25,8 @@ does not support a variable returned from another function */
 
 #define BEE_TAB_STOP 8 //definir le nombre dont le tab arrêt s'il divise
 
+#define QUIT_CONFIRMATION 3
+
 enum editorKey {
   ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
                     // which will help us to differentiate from regular chars (previously 'w')
@@ -64,6 +66,7 @@ typedef struct {
     char* file_name;
     char status_message[64];
     time_t status_message_time;
+    int dirty;
 } terminal_configurations ;
 
 typedef struct {
@@ -118,3 +121,7 @@ void draw_message_bar(text_buffer *message_buff);
 void draw_status_bar(text_buffer *status_buff);
 
 void set_status_message(const char *format, ...);
+
+void delete_char();
+
+void delete_char_from_row(plain_row* row, int position);

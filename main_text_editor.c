@@ -236,10 +236,21 @@ void draw_status_bar(text_buffer *status_buff){
     
     if (status_text_length > n_columns) {status_text_length = n_columns;}
 
+
     // now let's draw the status bar
     append_buffer(status_buff, status_text, status_text_length);
-    
-    for (int i = status_text_length; i < n_columns; i++){
+
+    int first_info_len = 0;
+
+    if (old_config.dirty != 0){
+        append_buffer(status_buff, " (modified)", 12);
+        first_info_len = status_text_length + 12;
+        }
+    else{
+        first_info_len = status_text_length;
+    }
+
+    for (int i = first_info_len; i < n_columns; i++){
         if (n_columns - i == current_line_text_length ){
             append_buffer(status_buff, current_line, current_line_text_length);
             break;
@@ -397,6 +408,9 @@ void insert_char_in_a_row(plain_row* row, int idx, int c) {
     row->row_data[idx] = c ;
     /* Updating the row following the previous changements */
     update_row(row) ;
+
+    
+
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -471,11 +485,18 @@ void save_edited() {
             if (write(f, str, len) == len) {
                 close(f) ;
                 free(str) ;
+                // if we get to here it surely means the saving process succeeded
+                set_status_message("Saving successed, %d bytes were written to disk", len);
             }
         }
         close(f) ;
     }
+    // if we get to here it surely means the saving process failed
+                set_status_message("Saving failed! %s", strerror(errno));
     free(str) ;
+    
+    // Reset old_config.dirty to 0 once the file is saved
+    old_config.dirty = 0;
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -483,17 +504,25 @@ void save_edited() {
 void key_process() {
     int key = read_one_key();
 
+    static int quit_times = QUIT_CONFIRMATION; //quit_times has to be static to retain its value after each call
+
     if (key == CTRL_KEY('q')) {
+        if (old_config.dirty != 0 && quit_times > 0){
+            set_status_message("Warning!!! %d changes were applied. To quit press Ctrl-Q %d more times.", old_config.dirty, quit_times);
+            quit_times --;
+            return;
+        }
         write(STDOUT_FILENO, "\x1b[2J", 4);
         write(STDOUT_FILENO, "\x1b[1;1H", 6);
         exit(EXIT_SUCCESS);  // Exit the program
     } 
 
+
+
     else if (key == ARROW_UP || key == ARROW_DOWN || 
             key == ARROW_LEFT || key == ARROW_RIGHT ||
             key == PAGE_UP   || key == PAGE_DOWN   ||
-            key == HOME_KEY  || key == END_KEY    || 
-            key == DELETE_KEY) {
+            key == HOME_KEY  || key == END_KEY  ) {
         move_cursor(key);
     }
 
@@ -507,7 +536,9 @@ void key_process() {
 
     else if (key == BACKSPACE || key == CTRL_KEY('h') 
             || key == DELETE_KEY) {
-        /* TODO */
+        if (key == DELETE_KEY){
+            move_cursor(ARROW_RIGHT);}
+        delete_char();
     } 
 
     else if (key == CTRL_KEY('l') || key == '\x1b') {
@@ -518,7 +549,35 @@ void key_process() {
     else {
         insert_char_in_the_editor(key) ;
     }
+
+    // Reset quit_times
+    quit_times = QUIT_CONFIRMATION;
 }
+/* ++++++++++++++++++++++ Deleting operators ++++++++++++++++++++++++ */
+void delete_char_from_row(plain_row* row, int position){
+    if (position < 0 || position >= row->ren_size){ return ;} 
+    else{
+        memmove(&row->row_data[position], &row->row_data[position + 1], row->ren_size - position);
+        row->ren_size -= 1;
+        update_row(row);
+    }
+}
+
+void delete_char(){
+    int cursor_y = old_config.cursor_y;
+    int cursor_x = old_config.cursor_x;
+
+    if (cursor_y == old_config.nrows ){ // the cursor is past the EOF, there is nothing to delete
+        return;
+    }
+    plain_row* row = &old_config.editor_row[cursor_y];
+    if (cursor_x > 0){ // if cursor_x is 0 we're at the beggining of the row, there is nothing to delete
+        delete_char_from_row(row, old_config.cursor_x - 1);
+        old_config.cursor_x -= 1;
+    }
+}
+/* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
 
 /////////////////////////////////////////////////////////////////////
 struct winsize cursor_position(){
@@ -609,7 +668,7 @@ void update_row(plain_row* row){
     }
     free(row->render);
     row->render = malloc(row->row_size + (BEE_TAB_STOP-1)*num_tabs+1);//maximum d'espace ajouté par tab est 7 par défaut
-    //à l'instant,on copie juste  le contenu
+    //right now we'll only copy the content
     int idx_render = 0;
     //we use two indices because later we will use that for differentiating render and original indices.                                                                                                                                                                                   
     for(int i=0;i<row->row_size;i++){
@@ -621,8 +680,12 @@ void update_row(plain_row* row){
     }
     
     row->render[idx_render] = '\0';
-    row->ren_size = idx_render;;
+    row->ren_size = idx_render;
+    // once we update a row we mark that some changes were done
+    old_config.dirty += 1;
 }
+
+
 void insert_row(char* opening_line, ssize_t len) {
     /* To support multiple lines storage into the buffer */
     old_config.editor_row = realloc(old_config.editor_row, sizeof(plain_row) * (old_config.nrows + 1)) ; /* + 1 for the new line */
@@ -642,6 +705,7 @@ void insert_row(char* opening_line, ssize_t len) {
     old_config.editor_row[idx].render = NULL;
     update_row(&old_config.editor_row[idx]);
     old_config.nrows += 1;
+
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -675,6 +739,9 @@ void open_editor(char* filename){
     }
     free(opening_line);
     fclose(fptr) ;      /* Close the file rather than free the pointer (which is not correct) */
+
+    // Reset old_config.dirty to 0 since insert_row calls update_raw which changes its value to 1 the moment the file opens
+    old_config.dirty = 0;
 }
 
 void set_status_message(const char *format, ...){ // format : %s %d etc
@@ -701,9 +768,11 @@ void intialize_editor(){
     old_config.window_size.ws_row -= 2;// making place for our status section (with the status message)
     // initializing file name
     old_config.file_name = NULL;
-
+    // Initializing status message and timeout
     old_config.status_message[0] = '\0';
     old_config.status_message_time= 0;
+    // initializing the dirty boolean
+    old_config.dirty = 0;
 }
 
 
@@ -729,7 +798,7 @@ int main(int argc, char** argv) {
         open_editor(argv[1]);
     }
 
-    set_status_message("HELP: Ctrl-Q = quit");
+    set_status_message("HELP: Ctrl-S = save | Ctrl-Q = quit");
     
     /* old_config.nrows--; */
     while (1) {
