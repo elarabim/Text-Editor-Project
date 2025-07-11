@@ -88,7 +88,7 @@ int read_one_key();
 
 void key_process();
 
-char* Prompt(char* pr);
+char* Prompt(char* pr, void (*callback)(char* ,int));
 
 void NewLineInsert();
 
@@ -131,3 +131,5 @@ void set_status_message(const char *format, ...);
 void delete_char();
 
 void delete_char_from_row(plain_row* row, int position);
+
+void search_query();

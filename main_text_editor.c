@@ -477,7 +477,7 @@ char* rows_to_str(int* str_len) {
 
 /* Save the file if modified after editing with BEE */
 // save as
-char* Prompt(char* pr){
+char* Prompt(char* pr, void (*callback)(char* ,int)){
     size_t size_cap = 128;
     char *buffer = malloc(size_cap);
 
@@ -493,12 +493,14 @@ char* Prompt(char* pr){
         }
         else if (c == '\x1b'){//Escape character
             set_status_message("");
+            if (callback) {callback(buffer, c);}
             free(buffer);
             return NULL;//we don't want to save now
         }
         else if (c == '\r'){//Press Enter to save
             if (len != 0){
                 set_status_message("");
+                if (callback) {callback(buffer, c);}
                 return buffer;
             }
         }
@@ -511,8 +513,8 @@ char* Prompt(char* pr){
             buffer[len] = '\0';
       
         }
+        if (callback) {callback(buffer, c);}
     }
-
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -521,7 +523,7 @@ void save_edited() {
     
     if (old_config.file_name == NULL) {
         /* It has to be treated later on */
-        old_config.file_name = Prompt("Save as: %s (Press Esc to cancel save request)");
+        old_config.file_name = Prompt("Save as: %s (Press Esc to cancel save request)", NULL);
         if (old_config.file_name == NULL){//empty save message
             set_status_message("Could not save");
             
@@ -581,26 +583,82 @@ int rx_to_cx(plain_row* row, int rx) {
 
 /* Search feature */
 
-void search_query() {
-  char *query = Prompt("Search: %s (ESC to cancel)") ;
-  if (query == NULL) {
-    return ;
-  }
-  for (int i = 0 ; i < old_config.nrows ; i++) {
-    /* Get the current row */
-    plain_row *row = &old_config.editor_row[i] ;
-    /* Check if query is a substring of the current row */
-    char *match = strstr(row->render, query);
-    if (match) {
-        /* Go to the line where is the match */
-        old_config.cursor_y = i ; 
-        /* Go to the match itself within the line */
-        old_config.cursor_x = rx_to_cx (row, match - row->render) ;
-        old_config.row_offset = old_config.nrows ; 
-        break ;
+void search_query_callback(char *query, int key){
+
+    static int last_row = -1; // -1 for no previous match
+    static int last_col = -1;
+    static int direction = 1; // 1 for searching forward, -1 for searching backward
+
+    if (key == '\r' || key == '\x1b' ){
+        last_row = -1; // -1 for no previous match
+        last_col = - 1;
+        direction = 1; // 1 for searching forward, -1 for searching backward
+        return;}
+
+    else if (key == ARROW_DOWN || key == ARROW_RIGHT){
+        direction = 1;
     }
+
+    else if (key == ARROW_UP || key == ARROW_LEFT){
+        direction = -1;
+    }
+
+    else{
+        last_row = -1;
+        last_col = -1;
+        direction = 1;
+    }
+
+    if (last_row == -1){ 
+        direction = 1;} //we can't go backwards if there is nothing in there
+    int current_row = last_row;
+    int current_col = last_col;
+    for (int i = 0 ; i < old_config.nrows ; i++) {
+        
+        current_row += direction;
+        if (current_row == - 1){current_row = old_config.nrows - 1;}// going backwards while at the beggining of file = going to EOF
+
+        else if (current_row == old_config.nrows){current_row = 0;} // going forward while at the EOF = going to the beggining of file
+
+        /* Get the current_row row */
+        plain_row *row = &old_config.editor_row[current_row] ; // 
+        /* Check if query is a substring of the current_row row */
+        char *match_start = row->render;
+        if (current_row == last_row && current_col != -1){ match_start += current_col + 1;}
+        char *match = strstr(match_start, query);
+        if (match) {
+            last_row = current_row;
+            last_col = match - row->render;
+
+            old_config.cursor_y = current_row;
+            /* Go to the match itself within the line */
+            old_config.cursor_x = rx_to_cx (row, match - row->render) ;
+            old_config.row_offset = old_config.nrows ; 
+            return;
+    }
+        else{ //no more matches in this row
+            
+            current_col = -1;}
   }
-  free(query) ; 
+}
+
+void search_query() {
+  int pre_cursor_x = old_config.cursor_x;
+  int pre_cursor_y = old_config.cursor_y;
+  int pre_row_offset = old_config.row_offset;
+  int pre_column_offset = old_config.column_offset;
+
+  char *query = Prompt("Search: %s (ESC to cancel)",search_query_callback) ;
+  if (query) {
+        free(query) ; 
+  }
+
+  else { // if query is NULL, then the saving process was cancelled
+    old_config.cursor_x = pre_cursor_x;
+    old_config.cursor_y = pre_cursor_y;
+    old_config.row_offset = pre_row_offset;
+    old_config.column_offset = pre_column_offset;
+  }
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
