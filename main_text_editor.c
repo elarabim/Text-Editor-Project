@@ -409,8 +409,6 @@ void insert_char_in_a_row(plain_row* row, int idx, int c) {
     /* Updating the row following the previous changements */
     update_row(row) ;
 
-    
-
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -443,6 +441,7 @@ void NewLineInsert(){
     old_config.cursor_y++;
     old_config.cursor_x = 0;
 }
+
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 /* Convert all the rows in the editor to a single string
@@ -516,6 +515,8 @@ char* Prompt(char* pr){
 
 }
 
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
 void save_edited() {
     
     if (old_config.file_name == NULL) {
@@ -558,6 +559,52 @@ void save_edited() {
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/* Convert an rx into a cx */
+
+int rx_to_cx(plain_row* row, int rx) {
+    int current_rx = 0 ;
+    int cx ; 
+    for (cx = 0 ; cx < row->row_size ; cx++) {
+        if (row->row_data[cx] == '\t') {
+            current_rx += (BEE_TAB_STOP - 1) - (current_rx % BEE_TAB_STOP) ;
+            current_rx += 1 ;
+            if (current_rx > rx) {
+                return cx ;
+            }
+        }
+    }
+    return cx ;
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+/* Search feature */
+
+void search_query() {
+  char *query = Prompt("Search: %s (ESC to cancel)") ;
+  if (query == NULL) {
+    return ;
+  }
+  for (int i = 0 ; i < old_config.nrows ; i++) {
+    /* Get the current row */
+    plain_row *row = &old_config.editor_row[i] ;
+    /* Check if query is a substring of the current row */
+    char *match = strstr(row->render, query);
+    if (match) {
+        /* Go to the line where is the match */
+        old_config.cursor_y = i ; 
+        /* Go to the match itself within the line */
+        old_config.cursor_x = rx_to_cx (row, match - row->render) ;
+        old_config.row_offset = old_config.nrows ; 
+        break ;
+    }
+  }
+  free(query) ; 
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
 
 void key_process() {
     int key = read_one_key();
@@ -604,6 +651,10 @@ void key_process() {
 
     else if (key == CTRL_KEY('l') || key == '\x1b') {
         /* TODO */
+    }
+
+    else if (key == CTRL_KEY('f')) {
+        search_query() ;
     }
 
     /* If no special key is used then it's a character to insert in the editor */
@@ -871,6 +922,18 @@ void intialize_editor(){
 }
 
 
+
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+
+
+
+
+
+
+
+
 int main(int argc, char** argv) {
 
     struct termios new_settings; 
@@ -890,7 +953,7 @@ int main(int argc, char** argv) {
         open_editor(argv[1]);
     }
 
-    set_status_message("HELP: Ctrl-S = save | Ctrl-Q = quit");
+    set_status_message("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find") ;
     
     /* old_config.nrows--; */
     while (1) {
