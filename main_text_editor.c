@@ -169,7 +169,7 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
    
     for (int i = 0; i < ws_row  ; i++) {
         int file_row = i + old_config.row_offset ;
-        if (old_config.nrows <= file_row) {
+        if (old_config.nrows <= file_row) { //past the file rows
             if (old_config.nrows == 0 && i == old_config.window_size.ws_row / 3) {
                 /* write(STDOUT_FILENO, "~\r\n", 3) ; */
                 /// Welcome message ///
@@ -207,12 +207,13 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
 
             char *beyond_offset = &old_config.editor_row[file_row].render[column_offset]; //it needs to be a pointer (&) as it'll be an argument for isdigit
             unsigned char *highlights_array = &old_config.editor_row[file_row].highlight[old_config.column_offset]; // the nth highlight corresponds to the nth character in render
-            int current_color = HL_NORMAL; //keeping track of color so we don't have to write down an esc each time
+            int current_color = -1; //keeping track of color so we don't have to write down an esc each time
 
             for(int j = 0; j < length_row; j++){
-                if (highlights_array[j] == HL_DIGITS){
+                if (highlights_array[j] == HL_DIGITS || highlights_array[j] == HL_MATCH){
                     int color = color_syntax(highlights_array[j]);
-                    if (color != current_color){current_color = color;
+                    if (color != current_color){
+                    current_color = color;
                     char buffer[16];
                     int color_lenght = snprintf(buffer, sizeof(buffer),"\x1b[%dm", color);
                     append_buffer(tildes_buff,buffer,color_lenght);
@@ -221,9 +222,9 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
                 append_buffer(tildes_buff,&beyond_offset[j],1); //&beyond_offset[j] being one digit we have to call its pointer since append_buffer takes char* and cahr for the 2e arg
                 }
                 else if(highlights_array[j] == HL_NORMAL){
-                    if(current_color != HL_NORMAL){
+                    if(current_color != -1){
                         append_buffer(tildes_buff,"\x1b[39m",5);
-                        current_color = HL_NORMAL;} //we'll only have to write an esc if the previous char was a digit
+                        current_color = -1;} //we'll only have to write an esc if the previous char was a digit
                     
                     append_buffer(tildes_buff,&beyond_offset[j],1);}
             
@@ -609,15 +610,14 @@ void search_query_callback(char *query, int key){
     static int last_col = -1;
     static int direction = 1; // 1 for searching forward, -1 for searching backward
 
-    /* Restore hl to its previous value after each search */
-    static int saved_hl_line ;
+/*     /* Restore hl to its previous value after each search */
+    /*static int saved_hl_line ;
     static char *saved_hl = NULL ;
     if (saved_hl) { 
         memcpy(old_config.editor_row[saved_hl_line].highlight, saved_hl, old_config.editor_row[saved_hl_line].ren_size) ;
         free(saved_hl) ;
         saved_hl = NULL ;
-    }
-
+    }*/
     if (key == '\r' || key == '\x1b' ){
         last_row = -1; // -1 for no previous match
         last_col = - 1;
@@ -669,10 +669,10 @@ void search_query_callback(char *query, int key){
             /* Go to the match itself within the line */
             old_config.cursor_x = rx_to_cx (row, match - row->render) ;
             old_config.row_offset = old_config.nrows ; 
-
+/* 
             saved_hl_line = current_row ;
-            saved_hl = malloc(row->ren_size) ;
-            memcpy(saved_hl, row->highlight, row->ren_size) ;
+            saved_hl = malloc(row->ren_size) ; */
+           /*  memcpy(saved_hl, row->highlight, row->ren_size) ; */
             memset(&row->highlight[match - row->render], HL_MATCH, strlen(query)) ; 
             return ;
     }
