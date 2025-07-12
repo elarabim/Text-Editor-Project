@@ -27,6 +27,12 @@ does not support a variable returned from another function */
 
 #define QUIT_CONFIRMATION 3
 
+
+enum highlights{
+    normal = 0,
+    digits,
+};
+
 enum editorKey {
   ARROW_LEFT = 256, // in GCC and Clang chars are signed and coded in a byte, so 128 is an out of range
                     // which will help us to differentiate from regular chars (previously 'w')
@@ -49,7 +55,7 @@ typedef struct{
     int ren_size;
     char *row_data;
     char *render;//a string to handle tab for now,as the size of tab when applied is 8,when it can be written in 1 byte
-
+    unsigned char *highlight;
 } plain_row;
 
 
@@ -78,7 +84,7 @@ typedef struct {
 
 void OpenEditor();
 
-void draw_tildes(int ws_row, int col, text_buffer* tildes_buff);
+void draw_rows(int ws_row, int col, text_buffer* tildes_buff);
 
 void clear_screen(int ws_row, int col);
 
@@ -90,7 +96,7 @@ void key_process();
 
 char* Prompt(char* pr, void (*callback)(char* ,int));
 
-void NewLineInsert();
+void new_line_insert();
 
 struct winsize cursor_position();
 
@@ -133,3 +139,8 @@ void delete_char();
 void delete_char_from_row(plain_row* row, int position);
 
 void search_query();
+
+
+void update_syntax(plain_row *row);
+
+int color_syntax(int highlight);

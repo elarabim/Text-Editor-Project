@@ -164,7 +164,7 @@ void move_cursor(int direction){
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
-void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) { 
+void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) { 
     char welcome_buff[64];
    
     for (int i = 0; i < ws_row  ; i++) {
@@ -202,12 +202,32 @@ void draw_tildes(int ws_row, int ws_col, text_buffer* tildes_buff) {
             if (length_row > old_config.window_size.ws_col) {
                 length_row = old_config.window_size.ws_col;
             }
-            int column_offset = old_config.column_offset;
-            append_buffer(tildes_buff, &old_config.editor_row[file_row].render[column_offset], length_row); // we'll have to start from column_offset to 
-                                                                                                                // get the right start for our text as we scroll horizontaly too, to do
-                                                                                                                // so we'll have to usea pointerto the column in question
-        }
 
+            int column_offset = old_config.column_offset;
+
+            char *beyond_offset = &old_config.editor_row[file_row].render[column_offset]; //it needs to be a pointer (&) as it'll be an argument for isdigit
+            unsigned char *highlights_array = &old_config.editor_row[file_row].highlight[old_config.column_offset]; // the nth highlight corresponds to the nth character in render
+            int current_color = normal; //keeping track of color so we don't have to write down an esc each time
+
+            for(int j = 0; j < length_row; j++){
+                if (highlights_array[j] == digits){
+                    int color = color_syntax(highlights_array[j]);
+                    if (color != current_color){current_color = color;
+                    char buffer[16];
+                    int color_lenght = snprintf(buffer, sizeof(buffer),"\x1b[%dm", color);
+                    append_buffer(tildes_buff,buffer,color_lenght);
+                    append_buffer(tildes_buff,&beyond_offset[j],1); //&beyond_offset[j] being one digit we have to call its pointer since append_buffer takes char* and cahr for the 2e arg
+                    }
+                }
+                else if(highlights_array[j] == normal){
+                    if(current_color != normal){
+                        append_buffer(tildes_buff,"\x1b[39m",5);
+                        current_color = normal;} //we'll only have to write an esc if the previous char was a digit
+                    
+                    append_buffer(tildes_buff,&beyond_offset[j],1);}
+            
+            }}
+        append_buffer(tildes_buff, "\x1b[39m", 5);
         append_buffer(tildes_buff, "\x1b[K", 3);  // Efface la ligne jusqu'à la fin
         append_buffer(tildes_buff, "\r\n", 2);
     }
@@ -281,7 +301,7 @@ void clear_screen(int ws_row, int ws_col){
     // we'll hide the cursor before drawing the tildes
     append_buffer(&initializing_screen,"\x1b[?25l", 6);//?25: hide cursor; l: lowercase "L" -> disable (cursor)
 
-    //we'll replace this clearing command with a line by line one in draw_tildes
+    //we'll replace this clearing command with a line by line one in draw_rows
     /* append_buffer(&initializing_screen,"\x1b[2J", 4); */ // J command: clear the screen ; 2: all of the screen
     append_buffer(&initializing_screen,"\x1b[1;1H", 6); // H command : cursor position
     /* write(STDOUT_FILENO, "\x1b[2J", 4) ;
@@ -289,7 +309,7 @@ void clear_screen(int ws_row, int ws_col){
                                            // would only take 3 bytes */
 
     /////////////////////////////// Drawing /////////////////////////////////////////
-    draw_tildes(ws_row, ws_col, &initializing_screen);
+    draw_rows(ws_row, ws_col, &initializing_screen);
 
     // now that we are exactly at the bottom of the file we'll draw our status bar
 
@@ -314,7 +334,7 @@ void clear_screen(int ws_row, int ws_col){
     write(STDOUT_FILENO, (&initializing_screen)->text, (&initializing_screen)->length); //We could've simply written 
                                                                                         //write(STDOUT_FILENO, initializing_screen.text, initializing_screen.length)
                                                                                         //but we wanted to keep a similar structure with draw as this part was previously
-                                                                                        //in draw_tildes
+                                                                                        //in draw_rows
     free_text_buffer(&initializing_screen);
 
 }
@@ -428,7 +448,7 @@ void insert_char_in_the_editor(int c) {
     /* Increment the cursor position horizontally after the insertion of c */
     old_config.cursor_x += 1 ; 
 }
-void NewLineInsert(){
+void new_line_insert(){
     if (old_config.cursor_x == 0){insert_row(old_config.cursor_y,"",0);}
     else{
         plain_row *row =  &old_config.editor_row[old_config.cursor_y];
@@ -570,19 +590,18 @@ int rx_to_cx(plain_row* row, int rx) {
     for (cx = 0 ; cx < row->row_size ; cx++) {
         if (row->row_data[cx] == '\t') {
             current_rx += (BEE_TAB_STOP - 1) - (current_rx % BEE_TAB_STOP) ;
-            current_rx += 1 ;
+        }
+           current_rx += 1 ;
             if (current_rx > rx) {
                 return cx ;
             }
-        }
     }
     return cx ;
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
-/* Search feature */
-
+/* Search feature */ 
 void search_query_callback(char *query, int key){
 
     static int last_row = -1; // -1 for no previous match
@@ -609,24 +628,30 @@ void search_query_callback(char *query, int key){
         direction = 1;
     }
 
-    if (last_row == -1){ 
+    if (last_row == -1 && last_col == -1){ 
         direction = 1;} //we can't go backwards if there is nothing in there
+    
     int current_row = last_row;
     int current_col = last_col;
-    for (int i = 0 ; i < old_config.nrows ; i++) {
-        
-        current_row += direction;
-        if (current_row == - 1){current_row = old_config.nrows - 1;}// going backwards while at the beggining of file = going to EOF
 
-        else if (current_row == old_config.nrows){current_row = 0;} // going forward while at the EOF = going to the beggining of file
+
+    for (int i = 0 ; i < old_config.nrows ; i++) {
+
+        if (current_row < 0){current_row = old_config.nrows - 1;}// going backwards while at the beggining of file = going to EOF
+
+        else if (current_row >= old_config.nrows){current_row = 0;} // going forward while at the EOF = going to the beggining of file
 
         /* Get the current_row row */
-        plain_row *row = &old_config.editor_row[current_row] ; // 
+         plain_row *row = &old_config.editor_row[current_row] ; // 
         /* Check if query is a substring of the current_row row */
-        char *match_start = row->render;
+         char *match_start = row->render;
+
         if (current_row == last_row && current_col != -1){ match_start += current_col + 1;}
+
         char *match = strstr(match_start, query);
+
         if (match) {
+
             last_row = current_row;
             last_col = match - row->render;
 
@@ -636,12 +661,12 @@ void search_query_callback(char *query, int key){
             old_config.row_offset = old_config.nrows ; 
             return;
     }
-        else{ //no more matches in this row
-            
-            current_col = -1;}
+        //no more matches in this row
+        current_row += direction;
+        current_col = -1;
   }
-}
-
+}  
+ 
 void search_query() {
   int pre_cursor_x = old_config.cursor_x;
   int pre_cursor_y = old_config.cursor_y;
@@ -680,7 +705,7 @@ void key_process() {
         exit(EXIT_SUCCESS);  // Exit the program
     } 
     else if (key == '\r'){
-        NewLineInsert();
+        new_line_insert();
     }
 
 
@@ -735,6 +760,7 @@ void delete_char_from_row(plain_row* row, int position){
 void free_row(plain_row *erow){
     free(erow->render);
     free(erow->row_data);
+    free(erow->highlight);
 }
 
 void delete_row(int row_index){//appending the content of a line to the previous if we press DEL_KEY
@@ -884,6 +910,8 @@ void update_row(plain_row* row){
     row->ren_size = idx_render;
     // once we update a row we mark that some changes were done
     old_config.dirty += 1;
+
+    update_syntax(row);
 }
 
 
@@ -907,6 +935,7 @@ void insert_row(int idx,char* opening_line, ssize_t len) {
 
     old_config.editor_row[idx].ren_size =0;
     old_config.editor_row[idx].render = NULL;
+    old_config.editor_row[idx].highlight = NULL;
     update_row(&old_config.editor_row[idx]);
     old_config.nrows += 1;
 
@@ -983,14 +1012,24 @@ void intialize_editor(){
 
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+void update_syntax(plain_row *row){
+    row->highlight = realloc(row->highlight, row->ren_size);// we reallocate memory since the row may have gotten longer or it is an entirely new row
+    memset(row->highlight, normal, row->ren_size); // memset will make sure we only pass unsigned chars
 
+    for( int i = 0; i < row->row_size; i ++){
+        if (isdigit(row->render[i])){
+            row->highlight[i] = digits;
+        }
+    }
+}
 
+int color_syntax(int highlight){
 
+    if (highlight == digits){ return 93;}
+    else { return 37;}
+}
 
-
-
-
-
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 int main(int argc, char** argv) {
 
