@@ -216,8 +216,9 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
                     char buffer[16];
                     int color_lenght = snprintf(buffer, sizeof(buffer),"\x1b[%dm", color);
                     append_buffer(tildes_buff,buffer,color_lenght);
-                    append_buffer(tildes_buff,&beyond_offset[j],1); //&beyond_offset[j] being one digit we have to call its pointer since append_buffer takes char* and cahr for the 2e arg
+                    
                     }
+                append_buffer(tildes_buff,&beyond_offset[j],1); //&beyond_offset[j] being one digit we have to call its pointer since append_buffer takes char* and cahr for the 2e arg
                 }
                 else if(highlights_array[j] == normal){
                     if(current_color != normal){
