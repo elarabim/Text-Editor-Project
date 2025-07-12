@@ -207,10 +207,10 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
 
             char *beyond_offset = &old_config.editor_row[file_row].render[column_offset]; //it needs to be a pointer (&) as it'll be an argument for isdigit
             unsigned char *highlights_array = &old_config.editor_row[file_row].highlight[old_config.column_offset]; // the nth highlight corresponds to the nth character in render
-            int current_color = normal; //keeping track of color so we don't have to write down an esc each time
+            int current_color = HL_NORMAL; //keeping track of color so we don't have to write down an esc each time
 
             for(int j = 0; j < length_row; j++){
-                if (highlights_array[j] == digits){
+                if (highlights_array[j] == HL_DIGITS){
                     int color = color_syntax(highlights_array[j]);
                     if (color != current_color){current_color = color;
                     char buffer[16];
@@ -220,10 +220,10 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
                     }
                 append_buffer(tildes_buff,&beyond_offset[j],1); //&beyond_offset[j] being one digit we have to call its pointer since append_buffer takes char* and cahr for the 2e arg
                 }
-                else if(highlights_array[j] == normal){
-                    if(current_color != normal){
+                else if(highlights_array[j] == HL_NORMAL){
+                    if(current_color != HL_NORMAL){
                         append_buffer(tildes_buff,"\x1b[39m",5);
-                        current_color = normal;} //we'll only have to write an esc if the previous char was a digit
+                        current_color = HL_NORMAL;} //we'll only have to write an esc if the previous char was a digit
                     
                     append_buffer(tildes_buff,&beyond_offset[j],1);}
             
@@ -592,7 +592,7 @@ int rx_to_cx(plain_row* row, int rx) {
         if (row->row_data[cx] == '\t') {
             current_rx += (BEE_TAB_STOP - 1) - (current_rx % BEE_TAB_STOP) ;
         }
-           current_rx += 1 ;
+            current_rx += 1 ;
             if (current_rx > rx) {
                 return cx ;
             }
@@ -608,6 +608,15 @@ void search_query_callback(char *query, int key){
     static int last_row = -1; // -1 for no previous match
     static int last_col = -1;
     static int direction = 1; // 1 for searching forward, -1 for searching backward
+
+    /* Restore hl to its previous value after each search */
+    static int saved_hl_line ;
+    static char *saved_hl = NULL ;
+    if (saved_hl) { 
+        memcpy(old_config.editor_row[saved_hl_line].highlight, saved_hl, old_config.editor_row[saved_hl_line].ren_size) ;
+        free(saved_hl) ;
+        saved_hl = NULL ;
+    }
 
     if (key == '\r' || key == '\x1b' ){
         last_row = -1; // -1 for no previous match
@@ -643,9 +652,9 @@ void search_query_callback(char *query, int key){
         else if (current_row >= old_config.nrows){current_row = 0;} // going forward while at the EOF = going to the beggining of file
 
         /* Get the current_row row */
-         plain_row *row = &old_config.editor_row[current_row] ; // 
+        plain_row *row = &old_config.editor_row[current_row] ; // 
         /* Check if query is a substring of the current_row row */
-         char *match_start = row->render;
+        char *match_start = row->render;
 
         if (current_row == last_row && current_col != -1){ match_start += current_col + 1;}
 
@@ -660,13 +669,20 @@ void search_query_callback(char *query, int key){
             /* Go to the match itself within the line */
             old_config.cursor_x = rx_to_cx (row, match - row->render) ;
             old_config.row_offset = old_config.nrows ; 
-            return;
+
+            saved_hl_line = current_row ;
+            saved_hl = malloc(row->ren_size) ;
+            memcpy(saved_hl, row->highlight, row->ren_size) ;
+            memset(&row->highlight[match - row->render], HL_MATCH, strlen(query)) ; 
+            return ;
     }
         //no more matches in this row
         current_row += direction;
         current_col = -1;
   }
 }  
+
+ 
  
 void search_query() {
   int pre_cursor_x = old_config.cursor_x;
@@ -1015,18 +1031,23 @@ void intialize_editor(){
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 void update_syntax(plain_row *row){
     row->highlight = realloc(row->highlight, row->ren_size);// we reallocate memory since the row may have gotten longer or it is an entirely new row
-    memset(row->highlight, normal, row->ren_size); // memset will make sure we only pass unsigned chars
+    memset(row->highlight, HL_NORMAL, row->ren_size); // memset will make sure we only pass unsigned chars
 
-    for( int i = 0; i < row->row_size; i ++){
+    int i = 0 ; 
+    while (i < row->row_size) {
         if (isdigit(row->render[i])){
-            row->highlight[i] = digits;
+            row->highlight[i] = HL_DIGITS;
         }
+        i += 1 ; 
     }
 }
 
 int color_syntax(int highlight){
 
-    if (highlight == digits){ return 93;}
+    if (highlight == HL_DIGITS){ return 93;}
+    else if (highlight == HL_MATCH) {
+        return 34 ;     /* blue */
+    }
     else { return 37;}
 }
 

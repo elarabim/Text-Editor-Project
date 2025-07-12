@@ -29,8 +29,9 @@ does not support a variable returned from another function */
 
 
 enum highlights{
-    normal = 0,
-    digits,
+    HL_NORMAL = 0,
+    HL_DIGITS,
+    HL_MATCH
 };
 
 enum editorKey {
