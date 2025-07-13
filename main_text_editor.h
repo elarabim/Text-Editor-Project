@@ -27,6 +27,22 @@ does not support a variable returned from another function */
 
 #define QUIT_CONFIRMATION 3
 
+#define HIGHLIGHT_NUMBERS (1<<0)
+
+
+typedef struct {
+    char* file_type ;
+    char** file_match ; 
+    int flags ;
+} Syntax ; 
+
+
+char* HL_C_extensions[] = {".c", ".h", ".cpp", NULL} ;
+
+Syntax HL_Database[] = {{"c", HL_C_extensions, HIGHLIGHT_NUMBERS}} ;
+
+
+#define HL_DATABASE_ENTRIES (sizeof(HL_Database) / sizeof(HL_Database[0]))
 
 enum highlights{
     HL_NORMAL = 0,
@@ -74,6 +90,7 @@ typedef struct {
     char status_message[64];
     time_t status_message_time;
     int dirty;
+    Syntax* syntax ; 
 } terminal_configurations ;
 
 typedef struct {

@@ -272,6 +272,19 @@ void draw_status_bar(text_buffer *status_buff){
         first_info_len = status_text_length;
     }
 
+
+    char file_type[16] ;
+    if (old_config.syntax != NULL) {
+        strncpy(file_type, old_config.syntax->file_type, sizeof(file_type)) ;
+        file_type[sizeof(file_type) - 1] = '\0' ; 
+    } else {
+        strncpy(file_type, "no ft", sizeof(file_type)) ;
+        file_type[sizeof(file_type) - 1] = '\0' ;
+    }
+
+    current_line_text_length = snprintf(current_line, sizeof(current_line), "%s | %d/%d", file_type,
+                                old_config.cursor_y + 1, old_config.nrows) ;
+
     for (int i = first_info_len; i < n_columns; i++){
         if (n_columns - i == current_line_text_length ){
             append_buffer(status_buff, current_line, current_line_text_length);
@@ -610,14 +623,14 @@ void search_query_callback(char *query, int key){
     static int last_col = -1;
     static int direction = 1; // 1 for searching forward, -1 for searching backward
 
-/*     /* Restore hl to its previous value after each search */
-    /*static int saved_hl_line ;
+    /* Restore hl to its previous value after each search */
+    static int saved_hl_line ;
     static char *saved_hl = NULL ;
     if (saved_hl) { 
         memcpy(old_config.editor_row[saved_hl_line].highlight, saved_hl, old_config.editor_row[saved_hl_line].ren_size) ;
         free(saved_hl) ;
         saved_hl = NULL ;
-    }*/
+    }
     if (key == '\r' || key == '\x1b' ){
         last_row = -1; // -1 for no previous match
         last_col = - 1;
@@ -669,10 +682,10 @@ void search_query_callback(char *query, int key){
             /* Go to the match itself within the line */
             old_config.cursor_x = rx_to_cx (row, match - row->render) ;
             old_config.row_offset = old_config.nrows ; 
-/* 
+
             saved_hl_line = current_row ;
-            saved_hl = malloc(row->ren_size) ; */
-           /*  memcpy(saved_hl, row->highlight, row->ren_size) ; */
+            saved_hl = malloc(row->ren_size) ;
+            memcpy(saved_hl, row->highlight, row->ren_size) ;
             memset(&row->highlight[match - row->render], HL_MATCH, strlen(query)) ; 
             return ;
     }
@@ -1023,21 +1036,49 @@ void intialize_editor(){
     old_config.status_message_time= 0;
     // initializing the dirty boolean
     old_config.dirty = 0;
+    old_config.syntax = NULL ; 
+}
+
+/* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
+int is_separator(int c) {
+    /* strchr looks for the first occurrence of a character in a 
+    string, and returns a pointer to the matching character in the string */
+    return isspace(c) || c == '\0' || strchr(",.()+-/*=~%<>[];", c) != NULL ;
 }
 
 
-
-
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
+
 void update_syntax(plain_row *row){
     row->highlight = realloc(row->highlight, row->ren_size);// we reallocate memory since the row may have gotten longer or it is an entirely new row
     memset(row->highlight, HL_NORMAL, row->ren_size); // memset will make sure we only pass unsigned chars
 
+    if (old_config.syntax == NULL) {
+        return ;
+    }
+
+    /* the beginning of the line is considired as a separator. */
+    int previous_separator = 1 ; 
     int i = 0 ; 
     while (i < row->row_size) {
-        if (isdigit(row->render[i])){
-            row->highlight[i] = HL_DIGITS;
+        unsigned char previous_hl ;
+        if (i > 0) {
+            previous_hl = row->highlight[i - 1] ;
         }
+        else {
+            previous_hl = HL_NORMAL ;
+        }
+        if (old_config.syntax->flags & HIGHLIGHT_NUMBERS) {
+            if (isdigit(row->render[i]) && (previous_separator || previous_hl == HL_DIGITS
+                || ((row->render[i] == '.') && (previous_hl == HL_DIGITS)))){
+                row->highlight[i] = HL_DIGITS;
+                i += 1 ; 
+                previous_separator = 0 ; 
+                continue ; 
+            }
+        }
+        previous_separator = is_separator(row->render[i]) ;
         i += 1 ; 
     }
 }
