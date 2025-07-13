@@ -561,10 +561,9 @@ void save_edited() {
         old_config.file_name = Prompt("Save as: %s (Press Esc to cancel save request)", NULL);
         if (old_config.file_name == NULL){//empty save message
             set_status_message("Could not save");
-            
             return;
         }
-
+        syntax_highlight(); // must be called each time we save a file
     }
 
     /* Convert all rows into one string */
@@ -977,6 +976,8 @@ void insert_row(int idx,char* opening_line, ssize_t len) {
 void open_editor(char* filename){
     FILE* fptr = fopen(filename,"r");
     if(fptr ==NULL){kill("fopen doesn't work\n");};
+
+   
     
     // save a copy of the file's name in our configurations structure after getting rid of previous memory 
     free(old_config.file_name);
@@ -985,9 +986,11 @@ void open_editor(char* filename){
                                             //once the program is executed
 
     // we'll allocate some memory to do so
-    char *filename_copy = malloc(strlen(filename) + 1); // the +1 is for '\0'  
+    char *filename_copy = malloc(strlen(filename) + 1); // the + 1 is for '\0'  
     strcpy(filename_copy, filename);
     old_config.file_name = filename_copy;
+
+    syntax_highlight(); //gather infos about the file
     
     
     char *opening_line = NULL; 
@@ -1069,7 +1072,7 @@ void update_syntax(plain_row *row){
         else {
             previous_hl = HL_NORMAL ;
         }
-        if (old_config.syntax->flags & HIGHLIGHT_NUMBERS) {
+        if (old_config.syntax->flags & HIGHLIGHT_NUMBERS) { // HIGHLIGHT_NUMBES = 1 so if it is activated, old_config.syntax->flags = 1, and 1 & 1 = 1 (True)
             if (isdigit(row->render[i]) && (previous_separator || previous_hl == HL_DIGITS
                 || ((row->render[i] == '.') && (previous_hl == HL_DIGITS)))){
                 row->highlight[i] = HL_DIGITS;
@@ -1086,12 +1089,44 @@ void update_syntax(plain_row *row){
 int color_syntax(int highlight){
 
     if (highlight == HL_DIGITS){ return 93;}
-    else if (highlight == HL_MATCH) {
-        return 34 ;     /* blue */
-    }
+    else if (highlight == HL_MATCH) {return 34 ;} /* blue */
+    else if (highlight == HL_STRING){ return 35;}
     else { return 37;}
 }
 
+void syntax_highlight(){
+    old_config.syntax = NULL; //reseting syntax highlighting
+    if (old_config.file_name == NULL){ return;}
+
+    char* filename = old_config.file_name;
+    char* extension = strrchr(filename, '.');
+    for (unsigned int i = 0; i < HL_DATABASE_ENTRIES; i ++){ // we might have many dtat bases
+        Syntax *syntax = &HL_Database[i];
+
+        /* int extensions_len = sizeof(syntax->file_match)/sizeof(syntax->file_match[0]);
+        for (int j = 0; j < extensions_len; j++){ // here syntax is a pointer so it shouldn't matter to how many elts it points
+                                                  // since a pointer is always the same size, unlike Syntax HL_Database[] which was declared as an array
+ */ 
+        for (int j =  0; syntax->file_match[j] /* Breaking cdt is syntax->file_match == NULL */; j++){
+            if (extension == NULL){ // file has no extension, but is a full filename (like Makefile)
+                if( strcmp(filename, syntax->file_match[j]) == 0 ){ // I'm using strcmp and not strstr here because Makefile_test for example isn't recognized as Makefile
+                    old_config.syntax = syntax;
+                    // Once we save a previously none existing file we must update all highlights (not just the extension)
+                    for (int file_row = 0; file_row <= old_config.nrows; file_row ++){
+                        update_syntax(&old_config.editor_row[file_row]);
+                    }}
+            }
+            else{
+                if (strcmp(extension , syntax->file_match[j]) == 0){ 
+                    old_config.syntax = syntax;
+                     // Once we save a previously none existing file we must update all highlights (not just the extension)
+                    for (int file_row = 0; file_row <= old_config.nrows; file_row ++){
+                        update_syntax(&old_config.editor_row[file_row]);
+                    }}
+            }
+        }   
+    }
+}
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
 int main(int argc, char** argv) {

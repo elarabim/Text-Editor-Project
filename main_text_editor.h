@@ -29,6 +29,8 @@ does not support a variable returned from another function */
 
 #define HIGHLIGHT_NUMBERS (1<<0)
 
+#define HIGHLIGHT_STRINGS (1<<1)
+
 
 typedef struct {
     char* file_type ;
@@ -39,13 +41,14 @@ typedef struct {
 
 char* HL_C_extensions[] = {".c", ".h", ".cpp", NULL} ;
 
-Syntax HL_Database[] = {{"c", HL_C_extensions, HIGHLIGHT_NUMBERS}} ;
+Syntax HL_Database[] = {{"c", HL_C_extensions, HIGHLIGHT_NUMBERS | HIGHLIGHT_STRINGS}} ;
 
 
 #define HL_DATABASE_ENTRIES (sizeof(HL_Database) / sizeof(HL_Database[0]))
 
 enum highlights{
     HL_NORMAL = 0,
+    HL_STRING,
     HL_DIGITS,
     HL_MATCH
 };
@@ -162,3 +165,5 @@ void search_query();
 void update_syntax(plain_row *row);
 
 int color_syntax(int highlight);
+
+void syntax_highlight(); 
