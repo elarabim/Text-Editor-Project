@@ -35,19 +35,31 @@ does not support a variable returned from another function */
 typedef struct {
     char* file_type ;
     char** file_match ; 
+    char **keywords;
+    char *comeent_start_single_line;
     int flags ;
 } Syntax ; 
 
 
 char* HL_C_extensions[] = {".c", ".h", ".cpp", NULL} ;
 
-Syntax HL_Database[] = {{"c", HL_C_extensions, HIGHLIGHT_NUMBERS | HIGHLIGHT_STRINGS}} ;
+char *HL_C_KEYWORDS[]= {//C keywords highlighting
+  "switch", "if", "while", "for", "break", "continue", "return", "else",
+  "struct", "union", "typedef", "static", "enum", "class", "case",
+   
+  "int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|",
+  "void|", NULL
+};
+Syntax HL_Database[] = {{"c",'//', HL_C_extensions,HL_C_KEYWORDS, HIGHLIGHT_NUMBERS | HIGHLIGHT_STRINGS}} ;
 
 
 #define HL_DATABASE_ENTRIES (sizeof(HL_Database) / sizeof(HL_Database[0]))
 
 enum highlights{
     HL_NORMAL = 0,
+    HL_COMMENT,
+    HL_KEYWORD1,
+    HL_KEYWORD2,
     HL_STRING,
     HL_DIGITS,
     HL_MATCH

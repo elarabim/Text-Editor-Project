@@ -1060,9 +1060,15 @@ void update_syntax(plain_row *row){
     if (old_config.syntax == NULL) {
         return ;
     }
-
+    char **keywords = old_config.syntax->keywords;
     /* the beginning of the line is considired as a separator. */
+    char *comm_start = old_config.syntax->comeent_start_single_line;
+    int comm_len = 0;
+    if (comm_start){
+        comm_len = strlen(comm_start);
+    }
     int previous_separator = 1 ; 
+    int quote_string = 0;
     int i = 0 ; 
     while (i < row->row_size) {
         unsigned char previous_hl ;
@@ -1072,6 +1078,41 @@ void update_syntax(plain_row *row){
         else {
             previous_hl = HL_NORMAL ;
         }
+        //comments
+        if(comm_len && !quote_string){//if there is a comment and is not a string
+            if (!strncmp(&row->render[i],comm_start,comm_len)){
+                memset(&row->highlight[i],HL_COMMENT,row->ren_size - i);
+                break;
+            }
+        }
+        if (old_config.syntax->flags& HIGHLIGHT_STRINGS){
+            if(quote_string){
+                row->highlight[i] = HL_STRING;
+                if (row->render[i] == '\\'&&i+1<row->ren_size){
+                    row->highlight[i] = HL_STRING;
+                    i++;
+                    i++;
+                    continue;;
+                }
+                if (row->render[i] == quote_string){
+                    quote_string = 0;
+                }
+                i++;
+                previous_separator = 1;
+                continue;
+           
+
+            }
+            else{
+                if (row->render[i] == '"' || row->render[i] == '\''){
+                    quote_string = row->render[i];
+                    row->highlight[i] = HL_STRING;
+                    i++;
+                    continue;
+                }
+            }
+        }
+       
         if (old_config.syntax->flags & HIGHLIGHT_NUMBERS) { // HIGHLIGHT_NUMBES = 1 so if it is activated, old_config.syntax->flags = 1, and 1 & 1 = 1 (True)
             if (isdigit(row->render[i]) && (previous_separator || previous_hl == HL_DIGITS
                 || ((row->render[i] == '.') && (previous_hl == HL_DIGITS)))){
@@ -1079,6 +1120,33 @@ void update_syntax(plain_row *row){
                 i += 1 ; 
                 previous_separator = 0 ; 
                 continue ; 
+            }
+        }
+
+        //keywords
+        if (previous_separator){//a separator came before the keyword
+            int j;
+            for (j=0;keywords[j];j++){
+                int key_len = strlen(keywords[j]);
+                int key_word2 = (keywords[j][key_len -1] == '|');
+                if (key_word2) key_len--;
+
+                if (!strncmp(&row->render[i],keywords[j],key_len) &&
+            is_separator(row->render[i + key_len])){
+                if( key_word2){
+                    memset(&row->highlight[i],HL_KEYWORD2,key_len);
+                }
+                else{
+                    memset(&row->highlight[i],HL_KEYWORD1,key_len);
+                }
+                i += key_len;
+                break;
+            }
+        }
+            if(keywords[j] != NULL){
+                previous_separator = 0;
+                continue;
+            
             }
         }
         previous_separator = is_separator(row->render[i]) ;
@@ -1091,6 +1159,9 @@ int color_syntax(int highlight){
     if (highlight == HL_DIGITS){ return 93;}
     else if (highlight == HL_MATCH) {return 34 ;} /* blue */
     else if (highlight == HL_STRING){ return 35;}
+    else if (highlight == HL_COMMENT){ return 36;}//CYAN FOR COMMENTS
+    else if (highlight == HL_KEYWORD1){ return 33;}//yellow
+    else if (highlight == HL_KEYWORD2){ return 32;}//green
     else { return 37;}
 }
 
