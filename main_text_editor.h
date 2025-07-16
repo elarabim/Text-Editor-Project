@@ -31,6 +31,9 @@ does not support a variable returned from another function */
 
 #define HIGHLIGHT_STRINGS (1<<1)
 
+/* blabla
+blabla
+bla bla  */
 
 typedef struct {
     char* file_type ;
@@ -109,6 +112,7 @@ typedef struct {
     time_t status_message_time;
     int dirty;
     Syntax* syntax ; 
+    int in_comment ; 
 } terminal_configurations ;
 
 typedef struct {

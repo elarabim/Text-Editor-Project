@@ -231,7 +231,7 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
                     }
                 
                 else if (highlights_array[j] == HL_DIGITS || highlights_array[j] == HL_MATCH || highlights_array[j] == HL_COMMENT || 
-                    highlights_array[j] == HL_STRING || highlights_array[j] == HL_KEYWORD1 || highlights_array[j] == HL_KEYWORD2 ){
+                    highlights_array[j] == HL_STRING || highlights_array[j] == HL_KEYWORD1 || highlights_array[j] == HL_KEYWORD2 || highlights_array[j] == HL_MLCOMMENT){
                     int color = color_syntax(highlights_array[j]);
                     if (color != current_color){
                     current_color = color;
@@ -1061,6 +1061,7 @@ void intialize_editor(){
     // initializing the dirty boolean
     old_config.dirty = 0;
     old_config.syntax = NULL ; 
+    old_config.in_comment = 0 ; 
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -1094,9 +1095,19 @@ void update_syntax(plain_row *row){
     if (sl_comm_start){
         sl_comm_len = strlen(sl_comm_start);
     }
-    int previous_separator = 1 ; 
+    
+    if (ml_comm_start){
+        mls_comm_len = strlen(ml_comm_start) ;
+    }
+
+    if (ml_comm_end){
+        mle_comm_len = strlen(ml_comm_end);
+    }
+
+    int previous_separator = 1; 
     int quote_string = 0;
     int i = 0 ; 
+
     while (i < row->row_size) {
         unsigned char previous_hl ;
         if (i > 0) {
@@ -1112,10 +1123,42 @@ void update_syntax(plain_row *row){
                 break;
             }
         }
+        if(mls_comm_len && mle_comm_len &&!quote_string){
+            int cmp = 0;
+            if (old_config.in_comment) {
+                /* highlight the current character */
+                row->highlight[i] = HL_MLCOMMENT ;
+                /* check if we're at the end of a multi-line comment */
+                cmp = strncmp(&row->render[i], ml_comm_end, mle_comm_len) ;
+                if (cmp == 0) {
+                    /* we're at the end of the ml-comment  */ 
+                    memset(&row->highlight[i], HL_MLCOMMENT, mle_comm_len) ;
+                    i += mle_comm_len ;
+                    old_config.in_comment = 0;
+                    previous_separator = 1;
+                    continue;
+                }
+                else {
+                    /* we're not at the end of comment => consume the current character */
+
+                    i += 1 ;
+                    continue;
+                }
+            }
+            else {
+                cmp = strncmp(&row->render[i], ml_comm_start, mls_comm_len) ;
+                if (cmp == 0) {
+                    memset(&row->highlight[i], HL_MLCOMMENT, mls_comm_len);
+                    old_config.in_comment = 1;
+                    i += mls_comm_len;
+                    continue;
+                }
+            }
+        }
         if (old_config.syntax->flags & HIGHLIGHT_STRINGS){
             if(quote_string){
                 row->highlight[i] = HL_STRING;
-                if (row->render[i] == '\\'&& i+1 < row->ren_size){
+                if (row->render[i] == '\\' && i+1 < row->ren_size){
                     row->highlight[i] = HL_STRING;
                     i++;
                     i++;
