@@ -36,7 +36,9 @@ typedef struct {
     char* file_type ;
     char** file_match ; 
     char **keywords;
-    char *comeent_start_single_line;
+    char *comment_start_single_line;
+    char *comment_start_multi_lines;
+    char *comment_end_multi_lines;
     int flags ;
 } Syntax ; 
 
@@ -50,7 +52,7 @@ char *HL_C_KEYWORDS[]= {//C keywords highlighting
   "int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|",
   "void|", NULL
 };
-Syntax HL_Database[] = {{"c",'//', HL_C_extensions,HL_C_KEYWORDS, HIGHLIGHT_NUMBERS | HIGHLIGHT_STRINGS}} ;
+Syntax HL_Database[] = {{"c", HL_C_extensions, HL_C_KEYWORDS, "//", "/*", "*/", HIGHLIGHT_NUMBERS | HIGHLIGHT_STRINGS}} ;
 
 
 #define HL_DATABASE_ENTRIES (sizeof(HL_Database) / sizeof(HL_Database[0]))
@@ -58,6 +60,7 @@ Syntax HL_Database[] = {{"c",'//', HL_C_extensions,HL_C_KEYWORDS, HIGHLIGHT_NUMB
 enum highlights{
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_MLCOMMENT,
     HL_KEYWORD1,
     HL_KEYWORD2,
     HL_STRING,
