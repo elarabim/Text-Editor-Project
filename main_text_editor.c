@@ -210,7 +210,28 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
             int current_color = -1; //keeping track of color so we don't have to write down an esc each time
 
             for(int j = 0; j < length_row; j++){
-                if (highlights_array[j] == HL_DIGITS || highlights_array[j] == HL_MATCH){
+                 if (iscntrl(beyond_offset[j])){
+                    append_buffer(tildes_buff, "\x1b[7m", 4);
+                    char ordre = 0;
+                    if (beyond_offset[j] <= 26  /* in alphabetical range */ ){ // remider that our key are ints now so each letter (A for example) is now presented by its order (26 for A)
+                        ordre = '@' + beyond_offset[j];
+                        if (beyond_offset[j] != 0){ // 0 is ASCII for '\0'
+                            append_buffer(tildes_buff, &ordre, 1);}}  
+
+                    else {
+                        append_buffer(tildes_buff, "?", 1); // "?" is a pointer to '?' 
+                    }
+
+                    append_buffer(tildes_buff, "\x1b[m", 3);
+
+                    if (current_color != -1){// restoring colors after managing ctrl keys
+                        char buffer[16];
+                        int color_lenght = snprintf(buffer, sizeof(buffer),"\x1b[%dm", current_color);
+                        append_buffer(tildes_buff,buffer,color_lenght);}
+                    }
+                
+                else if (highlights_array[j] == HL_DIGITS || highlights_array[j] == HL_MATCH || highlights_array[j] == HL_COMMENT || 
+                    highlights_array[j] == HL_STRING || highlights_array[j] == HL_KEYWORD1 || highlights_array[j] == HL_KEYWORD2 ){
                     int color = color_syntax(highlights_array[j]);
                     if (color != current_color){
                     current_color = color;
@@ -230,7 +251,7 @@ void draw_rows(int ws_row, int ws_col, text_buffer* tildes_buff) {
             
             }}
         append_buffer(tildes_buff, "\x1b[39m", 5);
-        append_buffer(tildes_buff, "\x1b[K", 3);  // Efface la ligne jusqu'à la fin
+        append_buffer(tildes_buff, "\x1b[K", 3);  // Clears the row from cursor to end
         append_buffer(tildes_buff, "\r\n", 2);
     }
    /*  append_buffer(tildes_buff, "~", 1); */
@@ -917,7 +938,7 @@ void enable_raw_mode(struct termios *settings) {
 /////////////////////////////////////////////////////////////////////
 void update_row(plain_row* row){
     int num_tabs = 0;
-    for(int j=0;j<row->ren_size;j++){
+    for(int j=0; j<row->ren_size; j++){
         if( row->row_data[j] == '\t'){
             num_tabs++;
         }
@@ -1062,10 +1083,16 @@ void update_syntax(plain_row *row){
     }
     char **keywords = old_config.syntax->keywords;
     /* the beginning of the line is considired as a separator. */
-    char *comm_start = old_config.syntax->comeent_start_single_line;
-    int comm_len = 0;
-    if (comm_start){
-        comm_len = strlen(comm_start);
+    char *sl_comm_start = old_config.syntax->comment_start_single_line;
+    char *ml_comm_start = old_config.syntax->comment_start_multi_lines;
+    char *ml_comm_end = old_config.syntax->comment_end_multi_lines;
+    
+    int sl_comm_len = 0;
+    int mls_comm_len = 0;
+    int mle_comm_len = 0;
+
+    if (sl_comm_start){
+        sl_comm_len = strlen(sl_comm_start);
     }
     int previous_separator = 1 ; 
     int quote_string = 0;
@@ -1079,16 +1106,16 @@ void update_syntax(plain_row *row){
             previous_hl = HL_NORMAL ;
         }
         //comments
-        if(comm_len && !quote_string){//if there is a comment and is not a string
-            if (!strncmp(&row->render[i],comm_start,comm_len)){
-                memset(&row->highlight[i],HL_COMMENT,row->ren_size - i);
+        if(sl_comm_len && !quote_string){//if there is a comment and is not a string
+            if (!strncmp(&row->render[i], sl_comm_start, sl_comm_len)){
+                memset(&row->highlight[i], HL_COMMENT, row->ren_size - i);
                 break;
             }
         }
-        if (old_config.syntax->flags& HIGHLIGHT_STRINGS){
+        if (old_config.syntax->flags & HIGHLIGHT_STRINGS){
             if(quote_string){
                 row->highlight[i] = HL_STRING;
-                if (row->render[i] == '\\'&&i+1<row->ren_size){
+                if (row->render[i] == '\\'&& i+1 < row->ren_size){
                     row->highlight[i] = HL_STRING;
                     i++;
                     i++;
@@ -1156,10 +1183,10 @@ void update_syntax(plain_row *row){
 
 int color_syntax(int highlight){
 
-    if (highlight == HL_DIGITS){ return 93;}
+    if (highlight == HL_DIGITS){ return 31;}
     else if (highlight == HL_MATCH) {return 34 ;} /* blue */
     else if (highlight == HL_STRING){ return 35;}
-    else if (highlight == HL_COMMENT){ return 36;}//CYAN FOR COMMENTS
+    else if (highlight == HL_COMMENT || highlight == HL_MLCOMMENT){ return 36;}//CYAN FOR COMMENTS
     else if (highlight == HL_KEYWORD1){ return 33;}//yellow
     else if (highlight == HL_KEYWORD2){ return 32;}//green
     else { return 37;}
@@ -1183,7 +1210,7 @@ void syntax_highlight(){
                 if( strcmp(filename, syntax->file_match[j]) == 0 ){ // I'm using strcmp and not strstr here because Makefile_test for example isn't recognized as Makefile
                     old_config.syntax = syntax;
                     // Once we save a previously none existing file we must update all highlights (not just the extension)
-                    for (int file_row = 0; file_row <= old_config.nrows; file_row ++){
+                    for (int file_row = 0; file_row < old_config.nrows; file_row ++){
                         update_syntax(&old_config.editor_row[file_row]);
                     }}
             }
@@ -1191,7 +1218,7 @@ void syntax_highlight(){
                 if (strcmp(extension , syntax->file_match[j]) == 0){ 
                     old_config.syntax = syntax;
                      // Once we save a previously none existing file we must update all highlights (not just the extension)
-                    for (int file_row = 0; file_row <= old_config.nrows; file_row ++){
+                    for (int file_row = 0; file_row < old_config.nrows; file_row ++){
                         update_syntax(&old_config.editor_row[file_row]);
                     }}
             }
