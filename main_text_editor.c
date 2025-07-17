@@ -817,9 +817,14 @@ void delete_row(int row_index){//appending the content of a line to the previous
     if (row_index<0 || row_index> old_config.nrows){return;}
     free_row(&old_config.editor_row[row_index]);
     memmove(&old_config.editor_row[row_index],&old_config.editor_row[row_index +1],sizeof(plain_row)*(old_config.nrows - 1 - row_index));
+
     //writing there the rest of the row
     old_config.nrows--;
     old_config.dirty++;
+
+    for (int i = row_index; i < old_config.nrows; i++){
+        old_config.editor_row[i].idx -= 1; 
+    }
 }
 
 void row_append_str(plain_row* erow,char *str,size_t len){
@@ -965,15 +970,18 @@ void update_row(plain_row* row){
 }
 
 
-void insert_row(int idx,char* opening_line, ssize_t len) {
+void insert_row(int idx, char* opening_line, ssize_t len) {
     if (idx<0 || idx> old_config.nrows){return;}
 
     old_config.editor_row = realloc(old_config.editor_row,sizeof(plain_row) * (old_config.nrows + 1));
     /* To support multiple lines storage into the buffer */
     memcpy(&old_config.editor_row[idx + 1],&old_config.editor_row[idx],sizeof(plain_row) * (old_config.nrows - idx)); /* + 1 for the new line */
-
+    for (int i = idx + 1;  i < old_config.nrows; i++){
+        old_config.editor_row[i].idx += 1;
+    }
     /* Index of the new line to store */
-   
+    old_config.editor_row[idx].idx = idx;
+    old_config.editor_row[idx].hl_open_comment = 0 ; 
 
     old_config.editor_row[idx].row_size = len;
     old_config.editor_row[idx].row_data  = malloc(len + 1);
@@ -1061,7 +1069,7 @@ void intialize_editor(){
     // initializing the dirty boolean
     old_config.dirty = 0;
     old_config.syntax = NULL ; 
-    old_config.in_comment = 0 ; 
+    
 }
 
 /* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
@@ -1107,6 +1115,11 @@ void update_syntax(plain_row *row){
     int previous_separator = 1; 
     int quote_string = 0;
     int i = 0 ; 
+    int in_comment = 0;
+    if (row->idx > 0) {
+        in_comment = old_config.editor_row[row->idx - 1].hl_open_comment ;
+    }
+    
 
     while (i < row->row_size) {
         unsigned char previous_hl ;
@@ -1117,15 +1130,15 @@ void update_syntax(plain_row *row){
             previous_hl = HL_NORMAL ;
         }
         //comments
-        if(sl_comm_len && !quote_string){//if there is a comment and is not a string
+        if(sl_comm_len && !quote_string && !in_comment){//if there is a comment and is not a string
             if (!strncmp(&row->render[i], sl_comm_start, sl_comm_len)){
                 memset(&row->highlight[i], HL_COMMENT, row->ren_size - i);
                 break;
             }
         }
-        if(mls_comm_len && mle_comm_len &&!quote_string){
+        if (mls_comm_len && mle_comm_len && !quote_string){
             int cmp = 0;
-            if (old_config.in_comment) {
+            if (in_comment) {
                 /* highlight the current character */
                 row->highlight[i] = HL_MLCOMMENT ;
                 /* check if we're at the end of a multi-line comment */
@@ -1134,7 +1147,7 @@ void update_syntax(plain_row *row){
                     /* we're at the end of the ml-comment  */ 
                     memset(&row->highlight[i], HL_MLCOMMENT, mle_comm_len) ;
                     i += mle_comm_len ;
-                    old_config.in_comment = 0;
+                    in_comment = 0;
                     previous_separator = 1;
                     continue;
                 }
@@ -1149,12 +1162,13 @@ void update_syntax(plain_row *row){
                 cmp = strncmp(&row->render[i], ml_comm_start, mls_comm_len) ;
                 if (cmp == 0) {
                     memset(&row->highlight[i], HL_MLCOMMENT, mls_comm_len);
-                    old_config.in_comment = 1;
+                    in_comment = 1;
                     i += mls_comm_len;
                     continue;
                 }
             }
         }
+        
         if (old_config.syntax->flags & HIGHLIGHT_STRINGS){
             if(quote_string){
                 row->highlight[i] = HL_STRING;
@@ -1221,6 +1235,13 @@ void update_syntax(plain_row *row){
         }
         previous_separator = is_separator(row->render[i]) ;
         i += 1 ; 
+    }
+    if (row->hl_open_comment != in_comment) {
+        row->hl_open_comment = in_comment;
+        /* hl_open_comment did change => update the next line if there is one left */
+        if (row->idx + 1 < old_config.nrows) {
+            update_syntax(&old_config.editor_row[row->idx + 1]) ;
+        }
     }
 }
 

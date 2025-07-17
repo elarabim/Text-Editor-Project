@@ -33,7 +33,7 @@ does not support a variable returned from another function */
 
 /* blabla
 blabla
-bla bla  */
+bla bla //qqch */
 
 typedef struct {
     char* file_type ;
@@ -94,6 +94,8 @@ typedef struct{
     char *row_data;
     char *render;//a string to handle tab for now,as the size of tab when applied is 8,when it can be written in 1 byte
     unsigned char *highlight;
+    int idx ;
+    int hl_open_comment ; 
 } plain_row;
 
 
@@ -112,7 +114,6 @@ typedef struct {
     time_t status_message_time;
     int dirty;
     Syntax* syntax ; 
-    int in_comment ; 
 } terminal_configurations ;
 
 typedef struct {
